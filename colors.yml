@@ -1,0 +1,63 @@
+# Example desired state for a clickstack deployment. Non-secret values only.
+# Credentials belong in the gitignored .envrc.private as COLORS_PAR_* variables.
+# Never export COLORS_PAR_PROFILE: it selects a deployment's remote state.
+#
+# Required credentials:
+#   Vultr           COLORS_PAR_VULTR_API_KEY
+#   Cloudflare      COLORS_PAR_CLOUDFLARE_API_TOKEN
+#   state in R2     COLORS_PAR_R2_ACCESS_KEY_ID
+#                   COLORS_PAR_R2_SECRET_ACCESS_KEY
+#
+# The HyperDX ingestion key is generated on the server and is not an
+# operator-supplied credential.
+
+profile: clickstack-example
+workdir: .colors
+
+provider-compute: vultr
+provider-dns: cloudflare
+provider-backend: r2
+
+# Preserve this guard in committed desired state. Destruction requires an
+# explicitly authorized one-run override; never edit this flag to bypass it.
+compute-prevent-destroy: true
+
+# --- ClickStack -------------------------------------------------------------
+
+# Public hostname for the HyperDX UI. Caddy terminates TLS and proxies OTLP/HTTP
+# ingestion under the same host, so telemetry and UI share 443.
+clickstack-host: clickstack.example.com
+
+# Container images, one key per service. Pin digests here to stop tracking tags.
+clickstack-hyperdx-image: docker.hyperdx.io/hyperdx/hyperdx:2
+clickstack-otel-collector-image: docker.hyperdx.io/hyperdx/hyperdx-otel-collector:2
+clickstack-clickhouse-image: clickhouse/clickhouse-server:25.8
+clickstack-mongo-image: mongo:5.0.14
+clickstack-caddy-image: caddy:2-alpine
+
+# --- Vultr ------------------------------------------------------------------
+
+vultr-name: clickstack-example
+vultr-region: ams
+# ClickHouse, HyperDX, MongoDB and the collector are colocated; 4 vCPU / 8 GiB
+# is the realistic floor.
+vultr-plan: vc2-4c-8gb
+# Vultr operating systems are numeric ids; 2284 is Ubuntu 24.04 LTS x64.
+vultr-os-id: 2284
+
+# No vultr-ssh-keys: keygen mode, where the package generates and owns
+# ~/.ssh/<profile> and registers the account key resource named after the
+# profile. Supplying vultr-ssh-keys switches to opt-out mode and the package
+# then touches no key material at all.
+
+vultr-ssh-sources:
+  - 0.0.0.0/0
+  - "::/0"
+vultr-http-sources:
+  - 0.0.0.0/0
+  - "::/0"
+
+# --- R2 state backend -------------------------------------------------------
+
+r2-bucket: tofu-state-319271fed8bc6d2d9059362be1165f37-eu
+r2-endpoint: https://319271fed8bc6d2d9059362be1165f37.eu.r2.cloudflarestorage.com

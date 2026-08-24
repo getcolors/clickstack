@@ -1,0 +1,33 @@
+# Deterministic, credential-free fixture for tests and goldens.
+#
+# Keygen mode: no vultr-ssh-keys, so the package owns the machine keypair per
+# the SSH Keypair Standard. The opt-out variant is fixtures/optout.yml.
+profile: clickstack-fixture
+workdir: WORKDIR
+
+provider-compute: vultr
+provider-dns: cloudflare
+provider-backend: r2
+
+compute-prevent-destroy: true
+
+clickstack-host: clickstack.example.com
+clickstack-hyperdx-image: docker.hyperdx.io/hyperdx/hyperdx:2
+clickstack-otel-collector-image: docker.hyperdx.io/hyperdx/hyperdx-otel-collector:2
+clickstack-clickhouse-image: clickhouse/clickhouse-server:25.8
+clickstack-mongo-image: mongo:5.0.14
+clickstack-caddy-image: caddy:2-alpine
+
+vultr-name: clickstack-fixture
+vultr-region: ams
+vultr-plan: vc2-4c-8gb
+vultr-os-id: 2284
+vultr-ssh-sources:
+  - 0.0.0.0/0
+  - "::/0"
+vultr-http-sources:
+  - 0.0.0.0/0
+  - "::/0"
+
+r2-bucket: tofu-state-319271fed8bc6d2d9059362be1165f37-eu
+r2-endpoint: https://319271fed8bc6d2d9059362be1165f37.eu.r2.cloudflarestorage.com

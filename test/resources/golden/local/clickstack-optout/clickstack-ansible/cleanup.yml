@@ -1,0 +1,11 @@
+---
+- name: Stop ClickStack services before infrastructure deletion
+  hosts: clickstack
+  become: true
+  gather_facts: false
+  tasks:
+    - ansible.builtin.command: docker compose down
+      args: {chdir: /opt/clickstack}
+      register: compose_down
+      changed_when: "'Removed' in (compose_down.stderr + compose_down.stdout)"
+      failed_when: false

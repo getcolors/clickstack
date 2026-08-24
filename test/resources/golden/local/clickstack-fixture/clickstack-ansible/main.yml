@@ -1,0 +1,71 @@
+---
+- name: Install the ClickStack observability stack
+  hosts: clickstack
+  become: true
+  gather_facts: false
+  pre_tasks:
+    - ansible.builtin.wait_for_connection: {connect_timeout: 10, delay: 5, sleep: 5, timeout: 600}
+    - ansible.builtin.setup:
+  tasks:
+    - name: Install Docker and tooling
+      ansible.builtin.apt:
+        name: [docker.io, docker-compose-v2, ca-certificates, curl, openssl]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+    - ansible.builtin.systemd_service: {name: docker, enabled: true, state: started}
+    - ansible.builtin.file: {path: /opt/clickstack, state: directory, mode: "0755"}
+    - ansible.builtin.file: {path: /etc/clickstack, state: directory, mode: "0755"}
+
+    - name: Generate the ingestion key once, on this host only
+      ansible.builtin.shell: |
+        set -euo pipefail
+        umask 077
+        echo "HYPERDX_API_KEY=$(openssl rand -hex 16)" > /etc/clickstack/ingestion.env
+      args: {creates: /etc/clickstack/ingestion.env, executable: /bin/bash}
+
+    - name: Install stack configuration
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "{{ item.mode | default('0644') }}"
+      loop:
+        - {src: compose.yml, dest: /opt/clickstack/compose.yml}
+        - {src: Caddyfile, dest: /opt/clickstack/Caddyfile}
+        - {src: smoke.sh, dest: /usr/local/sbin/clickstack-smoke, mode: "0755"}
+      notify: Restart ClickStack
+
+    - ansible.builtin.meta: flush_handlers
+
+    - name: Converge pinned containers
+      ansible.builtin.command: docker compose up -d --remove-orphans
+      args: {chdir: /opt/clickstack}
+      register: compose_up
+      changed_when: "'Created' in (compose_up.stdout + compose_up.stderr) or 'Recreated' in (compose_up.stdout + compose_up.stderr) or 'Started' in (compose_up.stdout + compose_up.stderr)"
+
+    - name: Wait for the collector to report healthy
+      ansible.builtin.uri: {url: "http://127.0.0.1:13133", status_code: [200]}
+      register: collector_health
+      retries: 30
+      delay: 10
+      until: collector_health is succeeded
+
+    - name: Wait for the HyperDX UI on loopback
+      ansible.builtin.uri: {url: "http://127.0.0.1:8080", status_code: [200, 302]}
+      register: app_health
+      retries: 30
+      delay: 10
+      until: app_health is succeeded
+
+    - name: Prove ingestion reaches ClickHouse
+      ansible.builtin.command: /usr/local/sbin/clickstack-smoke
+      register: smoke
+      changed_when: false
+      retries: 3
+      delay: 20
+      until: smoke.rc == 0
+
+  handlers:
+    - name: Restart ClickStack
+      ansible.builtin.command: docker compose up -d --remove-orphans
+      args: {chdir: /opt/clickstack}
