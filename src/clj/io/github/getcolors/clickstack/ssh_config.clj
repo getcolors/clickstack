@@ -14,8 +14,6 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]))
 
-(def package "clickstack")
-
 (defn host-alias
   "The profile, unchanged. Standard §2: the profile already keys remote state,
   which is what makes it unique enough to name a host by."
@@ -32,8 +30,11 @@
 (defn config-path []
   (io/file (System/getProperty "user.home") ".ssh" "config"))
 
-(defn begin-marker [alias] (str "# BEGIN " package " " alias " ANSIBLE MANAGED BLOCK"))
-(defn end-marker [alias] (str "# END " package " " alias " ANSIBLE MANAGED BLOCK"))
+;; The alias alone. A profile is `<package>-<suffix>`, so it already names the
+;; package, and two packages sharing one profile would be fighting over
+;; `~/.ssh/<profile>` long before they reached this file.
+(defn begin-marker [alias] (str "# BEGIN " alias " ANSIBLE MANAGED BLOCK"))
+(defn end-marker [alias] (str "# END " alias " ANSIBLE MANAGED BLOCK"))
 
 (defn host-patterns
   "The patterns a `Host` line declares, or nil when the line is not one."

@@ -15,10 +15,33 @@
 - name: Managed local ClickStack configuration
   hosts: local
   tasks:
-    - name: Manage SSH access for {{ host_alias }}
+    # Transitional, per standard §8: the marker briefly carried the package
+    # name as well. Changing a marker is a migration, not a rename — the new
+    # marker cannot see the old block, so without this a converge would leave
+    # the old stanza sitting below the new one, misleading whoever reads the
+    # file next. Drop this task after one pin cycle.
+    # `state: absent` fails outright on a missing path, and the file genuinely
+    # may not exist yet on a fresh workstation, so this is guarded rather than
+    # relying on the main task's `create:`.
+    - name: Look for an existing ssh config
+      ansible.builtin.stat:
+        path: ~/.ssh/config
+      register: ssh_config_file
+
+    - name: Remove the superseded managed block for {{ host_alias }}
       ansible.builtin.blockinfile:
         path: ~/.ssh/config
         marker: "# {mark} clickstack {{ host_alias }} ANSIBLE MANAGED BLOCK"
+        state: absent
+      when: ssh_config_file.stat.exists
+
+    - name: Manage SSH access for {{ host_alias }}
+      ansible.builtin.blockinfile:
+        path: ~/.ssh/config
+        # The alias alone. The profile is <package>-<suffix>, so it already
+        # names the package; two packages sharing one profile would be fighting
+        # over ~/.ssh/<profile> long before they reached this file.
+        marker: "# {mark} {{ host_alias }} ANSIBLE MANAGED BLOCK"
         state: "{{ block_state | default('present') }}"
         create: true
         mode: "0600"

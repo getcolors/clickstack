@@ -19,6 +19,14 @@
   (is (not (str/includes? (ssh-config/identity-file (fixture))
                           (System/getProperty "user.home")))))
 
+(deftest the-marker-is-the-alias-alone
+  ;; The profile is <package>-<suffix>, so a marker carrying the package name
+  ;; too would repeat it: "# BEGIN clickstack clickstack-vultr".
+  (is (= "# BEGIN clickstack-vultr ANSIBLE MANAGED BLOCK"
+         (ssh-config/begin-marker "clickstack-vultr")))
+  (is (= "# END clickstack-vultr ANSIBLE MANAGED BLOCK"
+         (ssh-config/end-marker "clickstack-vultr"))))
+
 ;; §5 never adopt
 
 (deftest a-foreign-stanza-is-found
