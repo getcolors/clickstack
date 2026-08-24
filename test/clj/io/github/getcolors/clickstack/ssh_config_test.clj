@@ -50,21 +50,47 @@
                                             "clickstack-fixture"))))
 
 (deftest preflight-refuses-rather-than-overwrites
-  (with-redefs [ssh-config/adopt-error (fn [_] "already declares `Host x`")]
+  (with-redefs [ssh-config/adopt-error (fn [_] "already declares `Host x`")
+                ssh-config/placement-error (fn [_] nil)]
     (let [r (ssh-config/preflight! (fixture))]
       (is (= 1 (:green/exit r)))
       (is (str/includes? (:green/err r) "already declares")))))
 
 (deftest preflight-passes-a-clean-file
-  (with-redefs [ssh-config/adopt-error (fn [_] nil)]
+  (with-redefs [ssh-config/adopt-error (fn [_] nil)
+                ssh-config/placement-error (fn [_] nil)]
     (is (nil? (:green/exit (ssh-config/preflight! (fixture)))))))
+
+;; §5 placement. The block is written with insertbefore: BOF, because
+;; blockinfile anchors insertbefore on the *last* match and has no firstmatch.
+
+(deftest an-option-above-the-first-host-is-refused
+  ;; It is global today; a BOF insert would capture it into one stanza.
+  (is (= 1 (ssh-config/leading-option-line ["ServerAliveInterval 60" "Host a"])))
+  (is (= 3 (ssh-config/leading-option-line ["# comment" "" "IdentitiesOnly yes" "Host a"]))))
+
+(deftest a-file-that-opens-with-a-host-is-fine
+  (is (nil? (ssh-config/leading-option-line ["Host a" "    User root"])))
+  (is (nil? (ssh-config/leading-option-line ["# lead comment" "" "Host a" "    User root"])))
+  (is (nil? (ssh-config/leading-option-line ["Match host b" "    User root"]))))
+
+(deftest a-file-of-only-comments-is-fine
+  (is (nil? (ssh-config/leading-option-line ["# nothing here" ""]))))
+
+(deftest placement-error-mentions-the-recovery
+  (with-redefs [ssh-config/leading-option-line (fn [_] 4)]
+    (when (.isFile (ssh-config/config-path))
+      (let [err (ssh-config/placement-error (fixture))]
+        (is (str/includes? err "line 4"))
+        (is (str/includes? err "Host *"))))))
 
 ;; §6 build determinism
 
 (deftest build-and-dry-run-never-read-the-config
   ;; The only reader is adopt-error, and it must not run on a rendered-only
   ;; event. Redefining it to throw proves nothing in the build path calls it.
-  (with-redefs [ssh-config/adopt-error (fn [_] (throw (ex-info "read ~/.ssh/config" {})))]
+  (with-redefs [ssh-config/adopt-error (fn [_] (throw (ex-info "read ~/.ssh/config" {})))
+                ssh-config/placement-error (fn [_] (throw (ex-info "read ~/.ssh/config" {})))]
     (doseq [opts [(assoc (fixture) :green/event :build)
                   (assoc (fixture) :green/event :create :green/dry-run true)]]
       (is (= 0 (:green/exit (workflow/start-step opts {})))))))

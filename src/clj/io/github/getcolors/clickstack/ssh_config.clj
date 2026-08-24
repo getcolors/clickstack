@@ -53,6 +53,23 @@
       (and (not inside?) (some #{alias} (host-patterns line))) n
       :else (recur more (inc n) inside?))))
 
+(defn leading-option-line
+  "The 1-based line number of an option standing above the first `Host` or
+  `Match` line, or nil.
+
+  Such an option is global: it applies to every host the operator reaches. The
+  block is written with `insertbefore: BOF`, so it would land above that option
+  and capture it into this deployment's stanza, silently narrowing a global
+  setting to one host. Blank lines and comments are not options."
+  [lines]
+  (loop [[line & more] lines n 1]
+    (let [trimmed (str/trim (str line))]
+      (cond
+        (nil? line) nil
+        (or (str/blank? trimmed) (str/starts-with? trimmed "#")) (recur more (inc n))
+        (re-matches #"(?i)\s*(Host|Match)\s+.*" line) nil
+        :else n))))
+
 (defn adopt-error
   "The standard's never-adopt rule (§5). A hand-written `Host <profile>` stanza
   may be the operator's only record of how to reach something, so it stops the
@@ -67,10 +84,24 @@
              "stanza if it is stale, or change `profile` if it belongs to "
              "something else; this package will not overwrite it.")))))
 
+(defn placement-error
+  "The standard's placement rule (§5), in the one shape that cannot be honoured
+  without changing the meaning of the operator's file."
+  [_opts]
+  (let [f (config-path)]
+    (when (.isFile f)
+      (when-let [n (leading-option-line (str/split-lines (slurp f)))]
+        (str "refusing to manage " (.getPath f) ": line " n
+             " sets an option above the first `Host` line, so it applies to "
+             "every host. This package inserts its block at the top of the "
+             "file, which would capture that option into one stanza. Move "
+             "those global options below the managed block, or into an "
+             "explicit `Host *` stanza at the end of the file, and retry.")))))
+
 (defn preflight!
-  "Run the never-adopt check. Real create only: build and dry-run must not read
+  "Run the local checks. Real create only: build and dry-run must not read
   `~/.ssh/config` at all (§6)."
   [opts]
-  (if-let [err (adopt-error opts)]
+  (if-let [err (or (adopt-error opts) (placement-error opts))]
     (assoc opts :green/exit 1 :green/err err)
     opts))

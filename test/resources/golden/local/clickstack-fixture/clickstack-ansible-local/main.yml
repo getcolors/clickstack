@@ -25,9 +25,12 @@
         # ssh_config takes the first value it obtains, and blockinfile appends.
         # A Host * stanza above this block would win on User and IdentityFile
         # and connect as the wrong user with the wrong key, so the block goes
-        # above the first Host or Match line (§5).
-        insertbefore: '^\s*(Host|Match)\s'
-        firstmatch: true
+        # first (§5). BOF rather than a regex on purpose: blockinfile's
+        # insertbefore anchors on the *last* match, which is the wrong end of
+        # the file, and it has no firstmatch. Options standing above the first
+        # Host line would be captured into this stanza by a BOF insert, so the
+        # package refuses to run against such a file rather than rewriting it.
+        insertbefore: BOF
         block: |
           Host {{ host_alias }}
               HostName {{ ip }}
