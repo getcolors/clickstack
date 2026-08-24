@@ -55,6 +55,46 @@ standard forbids, and `bb test` covers exactly that.
 (`test/fixtures/colors.yml`) and opt-out (`test/fixtures/optout.yml`). A change
 that only holds in one of them is not conforming.
 
+## The `~/.ssh/config` block
+
+This package is also the reference implementation of the workspace SSH Config
+Standard (`../workspace/standards/ssh-config.md`), which is why the
+`ansible-local` stage exists: one `blockinfile` task giving the operator
+`ssh <profile>` instead of an address, a user and an identity file.
+
+Two rules there are easy to undo by accident.
+
+The play is **this package's own copy**, deliberately not shared with ONCE's,
+which is the opposite choice from `ssh.clj` above. `ssh.clj` acts on
+profile-named files only this deployment uses, so sharing it spreads fixes.
+The local play writes into a file the operator shares with every host they
+reach, so sharing it would let an unrelated upstream change rewrite that file
+at pin-bump time.
+
+Address, user, alias and `block_state` arrive as **Ansible extra-vars, never
+through Selmer**. That is what keeps `build` byte-identical across workstations
+and keeps addresses out of the goldens, and `scripts/golden.sh` fails if a
+dotted quad ever appears under `clickstack-ansible-local`.
+
+Create writes the block after compute and before convergence. Delete removes it
+*before* the destroy, which is the reverse of the keypair: a block that
+outlives its host is stale but harmless, while a key removed early locks you
+out of a machine that still exists.
+
+## Credentials generated on the server
+
+Three values live only on the host, all mode 0600 and all created under
+`creates:` so a re-converge never rotates them: the admin password in
+`/etc/clickstack/admin.env`, the team ingestion key in
+`/etc/clickstack/ingestion.env`, and `EXPRESS_SESSION_SECRET` in
+`/etc/clickstack/session.env`.
+
+The session secret matters more than it looks. HyperDX falls back to a constant
+published in its own repository when the variable is unset, so without this the
+deployment signs session cookies with a value anybody can read. It is generated
+rather than supplied because nothing outside the host ever needs it, which
+keeps it out of `.envrc.private`, `.colors/` and the goldens entirely.
+
 ## Commands
 
 ```sh

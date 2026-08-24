@@ -1,0 +1,108 @@
+(ns io.github.getcolors.clickstack.ssh-config-test
+  "Conformance with the workspace SSH Config Standard."
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is]]
+            [io.github.getcolors.clickstack.ssh-config :as ssh-config]
+            [io.github.getcolors.clickstack.tools :as tools]
+            [io.github.getcolors.clickstack.validate-test :refer [fixture optout]]
+            [io.github.getcolors.clickstack.workflow :as workflow]))
+
+;; §2 the alias and the identity file
+
+(deftest alias-is-the-profile
+  (is (= "clickstack-fixture" (ssh-config/host-alias (fixture)))))
+
+(deftest identity-file-keeps-the-tilde
+  ;; An expanded home directory would make the rendered block differ per
+  ;; workstation; OpenSSH expands the tilde itself.
+  (is (= "~/.ssh/clickstack-fixture" (ssh-config/identity-file (fixture))))
+  (is (not (str/includes? (ssh-config/identity-file (fixture))
+                          (System/getProperty "user.home")))))
+
+;; §5 never adopt
+
+(deftest a-foreign-stanza-is-found
+  (let [lines ["Host other" "    HostName 192.0.2.1" "" "Host clickstack-fixture"]]
+    (is (= 4 (ssh-config/foreign-stanza-line lines "clickstack-fixture")))))
+
+(deftest our-own-block-is-not-foreign
+  (let [alias "clickstack-fixture"
+        lines [(ssh-config/begin-marker alias)
+               (str "Host " alias)
+               "    HostName 192.0.2.1"
+               (ssh-config/end-marker alias)]]
+    (is (nil? (ssh-config/foreign-stanza-line lines alias)))))
+
+(deftest a-stanza-after-our-block-is-still-foreign
+  (let [alias "clickstack-fixture"
+        lines [(ssh-config/begin-marker alias)
+               (str "Host " alias)
+               (ssh-config/end-marker alias)
+               (str "Host " alias)]]
+    (is (= 4 (ssh-config/foreign-stanza-line lines alias)))))
+
+(deftest a-multi-pattern-host-line-counts
+  (is (= 1 (ssh-config/foreign-stanza-line ["Host web clickstack-fixture db"]
+                                           "clickstack-fixture"))))
+
+(deftest an-unrelated-file-is-left-alone
+  (is (nil? (ssh-config/foreign-stanza-line ["Host build" "Host clickstack-other"]
+                                            "clickstack-fixture"))))
+
+(deftest preflight-refuses-rather-than-overwrites
+  (with-redefs [ssh-config/adopt-error (fn [_] "already declares `Host x`")]
+    (let [r (ssh-config/preflight! (fixture))]
+      (is (= 1 (:green/exit r)))
+      (is (str/includes? (:green/err r) "already declares")))))
+
+(deftest preflight-passes-a-clean-file
+  (with-redefs [ssh-config/adopt-error (fn [_] nil)]
+    (is (nil? (:green/exit (ssh-config/preflight! (fixture)))))))
+
+;; §6 build determinism
+
+(deftest build-and-dry-run-never-read-the-config
+  ;; The only reader is adopt-error, and it must not run on a rendered-only
+  ;; event. Redefining it to throw proves nothing in the build path calls it.
+  (with-redefs [ssh-config/adopt-error (fn [_] (throw (ex-info "read ~/.ssh/config" {})))]
+    (doseq [opts [(assoc (fixture) :green/event :build)
+                  (assoc (fixture) :green/event :create :green/dry-run true)]]
+      (is (= 0 (:green/exit (workflow/start-step opts {})))))))
+
+(deftest the-local-play-renders-no-address
+  ;; Address, user and alias are run-time facts and travel as extra-vars, so
+  ;; the rendered playbook carries none of them.
+  (let [data (tools/ansible-local-data (assoc (fixture) :ip "203.0.113.7"))]
+    (is (not (contains? data :ip-rendered)))
+    (is (= "~/.ssh/clickstack-fixture" (:ssh-config-identity-file data)))))
+
+(deftest the-local-stage-renders-three-files
+  (let [targets (map #(str (:target %)) (tools/ansible-local-specs (fixture)))]
+    (is (some #(str/ends-with? % "/ansible.cfg") targets))
+    (is (some #(str/ends-with? % "/inventory.ini") targets))
+    (is (some #(str/ends-with? % "/main.yml") targets))
+    (is (every? #(str/includes? % "clickstack-ansible-local") targets))))
+
+;; §3 the identity file follows keygen mode
+
+(deftest keygen-mode-decides-the-identity-lines
+  (is (true? (:ssh-keygen (tools/ansible-local-data (fixture)))))
+  (is (false? (:ssh-keygen (tools/ansible-local-data (optout))))))
+
+;; §4 lifecycle
+
+(deftest create-writes-the-block-after-compute-and-before-convergence
+  (is (= [:clickstack/ssh-config]
+         (vec (rest (workflow/wire-fn :clickstack/infrastructure {:green/event :create})))))
+  (is (= [:clickstack/dns]
+         (vec (rest (workflow/wire-fn :clickstack/ssh-config {:green/event :create}))))))
+
+(deftest delete-removes-the-block-before-the-destroy
+  ;; The opposite of the keypair, which goes last. A stale block is harmless; a
+  ;; key removed early locks the operator out of a machine that still exists.
+  (is (= [:clickstack/ssh-config]
+         (vec (rest (workflow/wire-fn :clickstack/dns {:green/event :delete})))))
+  (is (= [:clickstack/infrastructure]
+         (vec (rest (workflow/wire-fn :clickstack/ssh-config {:green/event :delete})))))
+  (is (= [:clickstack/ssh-cleanup]
+         (vec (rest (workflow/wire-fn :clickstack/infrastructure {:green/event :delete}))))))

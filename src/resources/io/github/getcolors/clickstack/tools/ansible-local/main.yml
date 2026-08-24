@@ -1,0 +1,39 @@
+---
+# ClickStack's own copy of the local stage, per standards/ssh-config.md §7.
+#
+# It writes into ~/.ssh/config, a file the operator shares with every other
+# host they reach. Reusing another package's play would let an unrelated
+# upstream change — an added ProxyJump, a different host-key policy — rewrite
+# that file at pin-bump time, in a repository nobody was working in. Three
+# files against that exposure is the right trade.
+#
+# The variables here are Ansible's, not Selmer's: host_alias, ip, user and
+# block_state arrive as extra-vars at execution time, so `build` renders the
+# same bytes whether or not the machine exists and the goldens carry no
+# address (§6). The one Selmer conditional is the IdentityFile pair, because
+# whether the package owns a key is desired state that a build does know.
+- name: Managed local ClickStack configuration
+  hosts: local
+  tasks:
+    - name: Manage SSH access for {{ host_alias }}
+      ansible.builtin.blockinfile:
+        path: ~/.ssh/config
+        marker: "# {mark} clickstack {{ host_alias }} ANSIBLE MANAGED BLOCK"
+        state: "{{ block_state | default('present') }}"
+        create: true
+        mode: "0600"
+        # ssh_config takes the first value it obtains, and blockinfile appends.
+        # A Host * stanza above this block would win on User and IdentityFile
+        # and connect as the wrong user with the wrong key, so the block goes
+        # above the first Host or Match line (§5).
+        insertbefore: '^\s*(Host|Match)\s'
+        firstmatch: true
+        block: |
+          Host {{ host_alias }}
+              HostName {{ ip }}
+              User {{ user }}
+              Port 22
+<% if ssh-keygen %>              IdentityFile <{ ssh-config-identity-file }>
+              IdentitiesOnly yes
+<% endif %>              StrictHostKeyChecking accept-new
+              ForwardAgent no

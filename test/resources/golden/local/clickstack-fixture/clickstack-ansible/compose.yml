@@ -49,7 +49,10 @@ services:
   app:
     image: docker.hyperdx.io/hyperdx/hyperdx:2
     restart: unless-stopped
-    env_file: [/etc/clickstack/ingestion.env]
+    # session.env carries EXPRESS_SESSION_SECRET, generated on this host.
+    # Without it HyperDX signs session cookies with a constant published in its
+    # own repository.
+    env_file: [/etc/clickstack/ingestion.env, /etc/clickstack/session.env]
     environment:
       FRONTEND_URL: "https://clickstack.example.com"
       HYPERDX_APP_URL: "https://clickstack.example.com"

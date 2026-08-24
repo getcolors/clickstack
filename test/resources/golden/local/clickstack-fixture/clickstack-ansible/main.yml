@@ -27,6 +27,19 @@
         } > /etc/clickstack/admin.env
       args: {creates: /etc/clickstack/admin.env, executable: /bin/bash}
 
+    # HyperDX signs session cookies with EXPRESS_SESSION_SECRET and falls back
+    # to a constant published in its own repository when the variable is unset.
+    # Nothing outside this host ever needs the value, so it is generated here
+    # rather than supplied through desired state: no copy in .envrc.private, no
+    # copy in .colors/, none in a golden. `creates:` keeps it stable across
+    # converges, because rewriting it logs every session out.
+    - name: Generate the session secret once, on this host only
+      ansible.builtin.shell: |
+        set -euo pipefail
+        umask 077
+        echo "EXPRESS_SESSION_SECRET=$(openssl rand -hex 32)" > /etc/clickstack/session.env
+      args: {creates: /etc/clickstack/session.env, executable: /bin/bash}
+
     # The real ingestion key is the team's, minted by the app and unknowable
     # until the stack is up. Compose refuses to start with a missing env_file,
     # so the file is seeded empty here and rewritten by clickstack-setup.

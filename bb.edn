@@ -4,11 +4,13 @@
  {test {:requires ([clojure.test :as t]
                    [io.github.getcolors.clickstack.validate-test]
                    [io.github.getcolors.clickstack.ssh-test]
+                   [io.github.getcolors.clickstack.ssh-config-test]
                    [io.github.getcolors.clickstack.tools-test]
                    [io.github.getcolors.clickstack.workflow-test])
         :task (let [{:keys [fail error]}
                     (t/run-tests 'io.github.getcolors.clickstack.validate-test
                                  'io.github.getcolors.clickstack.ssh-test
+                                 'io.github.getcolors.clickstack.ssh-config-test
                                  'io.github.getcolors.clickstack.tools-test
                                  'io.github.getcolors.clickstack.workflow-test)]
                 (System/exit (if (pos? (+ fail error)) 1 0)))}

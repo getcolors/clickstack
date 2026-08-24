@@ -33,8 +33,10 @@
 (deftest graph-orders-the-stack
   (is (= [:clickstack/infrastructure]
          (vec (rest (workflow/wire-fn :clickstack/start {:green/event :create})))))
-  (is (= [:clickstack/dns]
+  (is (= [:clickstack/ssh-config]
          (vec (rest (workflow/wire-fn :clickstack/infrastructure {:green/event :create})))))
+  (is (= [:clickstack/dns]
+         (vec (rest (workflow/wire-fn :clickstack/ssh-config {:green/event :create})))))
   (is (= [:clickstack/acceptance]
          (vec (rest (workflow/wire-fn :clickstack/ansible {:green/event :create}))))))
 

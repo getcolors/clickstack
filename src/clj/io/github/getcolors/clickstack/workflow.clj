@@ -7,6 +7,7 @@
             [green.tofu :as tofu]
             [green.workflow :as wf]
             [io.github.getcolors.clickstack.ssh :as ssh]
+            [io.github.getcolors.clickstack.ssh-config :as ssh-config]
             [io.github.getcolors.clickstack.tools :as tools]
             [io.github.getcolors.clickstack.validate :as validate]))
 
@@ -56,7 +57,8 @@
               (let [opts (ssh/ensure-key! opts state-output)]
                 (if (wf/failed? opts)
                   opts
-                  (let [opts (ssh/preflight! (ssh/with-machine-key opts))]
+                  (let [opts (ssh/preflight! (ssh/with-machine-key opts))
+                        opts (if (wf/failed? opts) opts (ssh-config/preflight! opts))]
                     (if (wf/failed? opts) opts (assoc opts :green/exit 0)))))
 
               :else
@@ -67,15 +69,20 @@
     (case step
       :clickstack/start [start-step :clickstack/ansible]
       :clickstack/ansible [tools/ansible-step :clickstack/dns]
-      :clickstack/dns [tools/dns-step :clickstack/infrastructure]
-      ;; The local keypair goes last, strictly after a successful compute
-      ;; destroy: a failed delete leaves the key, which is still the only
-      ;; credential to whatever survived.
+      ;; The `~/.ssh/config` block goes before the destroy, the opposite of the
+      ;; keypair below. A block that outlives its host is stale but harmless; a
+      ;; key that predeceases its host locks the operator out of a machine that
+      ;; still exists. Both orders are deliberate; see standards/ssh-config.md.
+      :clickstack/dns [tools/dns-step :clickstack/ssh-config]
+      :clickstack/ssh-config [tools/ansible-local-step :clickstack/infrastructure]
       :clickstack/infrastructure [tools/infrastructure-step :clickstack/ssh-cleanup]
       :clickstack/ssh-cleanup [ssh/cleanup-step])
     (case step
       :clickstack/start [start-step :clickstack/infrastructure]
-      :clickstack/infrastructure [tools/infrastructure-step :clickstack/dns]
+      ;; After compute, which is where the address first exists, and before the
+      ;; stage that converges the machine.
+      :clickstack/infrastructure [tools/infrastructure-step :clickstack/ssh-config]
+      :clickstack/ssh-config [tools/ansible-local-step :clickstack/dns]
       :clickstack/dns [tools/dns-step :clickstack/ansible]
       :clickstack/ansible [tools/ansible-step :clickstack/acceptance]
       :clickstack/acceptance [tools/acceptance-step])))
@@ -86,8 +93,8 @@
     :key-fn #(str (:profile %) "/" tool ".tfstate")}))
 
 (def side-effecting
-  [:clickstack/infrastructure :clickstack/dns :clickstack/ansible
-   :clickstack/acceptance :clickstack/ssh-cleanup])
+  [:clickstack/infrastructure :clickstack/dns :clickstack/ssh-config
+   :clickstack/ansible :clickstack/acceptance :clickstack/ssh-cleanup])
 
 (def workflow
   (-> (wf/workflow {:start :clickstack/start :wire-fn wire-fn})

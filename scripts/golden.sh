@@ -45,6 +45,13 @@ for variant in colors optout; do
   if grep -rq "$HOME/.ssh" "$actual"; then
     echo "golden: $profile rendered a real home directory; build must use the placeholder" >&2; exit 1
   fi
+  # SSH Config Standard §6: the local stage takes the address, the user and the
+  # alias as Ansible extra-vars, never through Selmer, so its rendered playbook
+  # carries no address at all. A dotted quad here means someone templated a
+  # run-time fact and the goldens stopped being workstation-independent.
+  if grep -rEq '([0-9]{1,3}\.){3}[0-9]{1,3}' "$actual/clickstack-ansible-local"; then
+    echo "golden: $profile rendered an address into the local ssh_config stage" >&2; exit 1
+  fi
 
   if [[ $accept == 1 ]]; then
     rm -rf "$golden"; mkdir -p "$(dirname "$golden")"; cp -a "$actual" "$golden"; continue

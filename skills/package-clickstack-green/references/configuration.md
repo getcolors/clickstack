@@ -12,11 +12,15 @@ variables in the gitignored `.envrc.private`.
 | Cloudflare API token (zone-scoped) | `COLORS_PAR_CLOUDFLARE_API_TOKEN` |
 | R2 state backend | `COLORS_PAR_R2_ACCESS_KEY_ID`, `COLORS_PAR_R2_SECRET_ACCESS_KEY` |
 
-Neither the HyperDX admin password nor the ingestion key is here. Convergence
-generates the password into `/etc/clickstack/admin.env` (mode 0600), creates
-the initial HyperDX team with it, and writes the team's ingestion key into
-`/etc/clickstack/ingestion.env` (mode 0600). Neither ever reaches a tracked or
-generated file.
+No HyperDX credential is here. Three values are generated on the server, all
+mode 0600 and all written under `creates:` so a re-converge never rotates them:
+the admin password in `/etc/clickstack/admin.env`, the team ingestion key in
+`/etc/clickstack/ingestion.env`, and `EXPRESS_SESSION_SECRET` in
+`/etc/clickstack/session.env`. None reaches a tracked or generated file.
+
+The session secret is not optional hardening. HyperDX falls back to a constant
+published in its own repository when the variable is unset, so a deployment
+without it signs session cookies with a value anybody can read.
 
 ## Keys
 
@@ -88,16 +92,17 @@ recreating the app and collector when it changes. Both steps are idempotent:
 `/installation` reports whether a team exists, and the key is rewritten only
 when it actually differs.
 
-Retrieve the credentials over SSH:
+Convergence writes a `~/.ssh/config` block, so retrieval needs no address, no
+user and no `-i` flag:
 
 ```sh
-ssh -i ~/.ssh/<profile> root@SERVER 'cat /etc/clickstack/admin.env'
+ssh <profile> 'cat /etc/clickstack/admin.env'
 ```
 
 ## Sending telemetry
 
 ```sh
-key=$(ssh root@SERVER 'sed -n s/HYPERDX_API_KEY=//p /etc/clickstack/ingestion.env')
+key=$(ssh <profile> 'sed -n s/HYPERDX_API_KEY=//p /etc/clickstack/ingestion.env')
 curl -X POST https://<clickstack-host>/v1/logs \
   -H 'content-type: application/json' -H "authorization: $key" \
   --data @payload.json
@@ -110,10 +115,10 @@ use OTLP/HTTP.
 ## Operations
 
 ```sh
-ssh -i ~/.ssh/<profile> root@SERVER 'cd /opt/clickstack && docker compose ps'
-ssh -i ~/.ssh/<profile> root@SERVER '/usr/local/sbin/clickstack-setup'
-ssh -i ~/.ssh/<profile> root@SERVER '/usr/local/sbin/clickstack-smoke'
-ssh -i ~/.ssh/<profile> root@SERVER 'cd /opt/clickstack && docker compose logs --tail 100 otel-collector'
+ssh <profile> 'cd /opt/clickstack && docker compose ps'
+ssh <profile> '/usr/local/sbin/clickstack-setup'
+ssh <profile> '/usr/local/sbin/clickstack-smoke'
+ssh <profile> 'cd /opt/clickstack && docker compose logs --tail 100 otel-collector'
 ```
 
 `clickstack-smoke` is the same end-to-end ingest proof convergence runs: it

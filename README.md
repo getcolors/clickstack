@@ -60,9 +60,11 @@ Credentials are `COLORS_PAR_*` variables in the gitignored `.envrc.private`:
 
 `clickstack-admin-email` names the login for the initial HyperDX team, which
 convergence creates — the collector binds no OTLP receivers until a team
-exists. The admin password and the team's ingestion key are both generated on
-the server, into `/etc/clickstack/admin.env` and
-`/etc/clickstack/ingestion.env`; retrieve them over SSH.
+exists. The admin password, the team's ingestion key and the session secret are
+all generated on the server, into `/etc/clickstack/admin.env`,
+`/etc/clickstack/ingestion.env` and `/etc/clickstack/session.env`. Convergence
+also writes a `~/.ssh/config` block, so `ssh <profile>` reaches the host with no
+address or flags.
 
 See [the configuration reference](skills/package-clickstack-green/references/configuration.md)
 for every key.

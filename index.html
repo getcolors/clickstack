@@ -42,6 +42,10 @@ chmod +x green
 
   <p>Supplying <code>vultr-ssh-keys</code> opts out entirely: the package then generates, validates and deletes no key material. Rotation is a rebuild, because Vultr key lists are ForceNew.</p>
 
+  <h2>The SSH config block</h2>
+  <p>Convergence also writes one <code>~/.ssh/config</code> block, following the workspace SSH Config Standard, so <code>ssh &lt;profile&gt;</code> reaches the host with no address, user or <code>-i</code> flag. The block names an <code>IdentityFile</code> only in keygen mode, where the package knows the key because it generated it. It is inserted above the first <code>Host</code> line, because <code>ssh_config</code> takes the first value it obtains and a <code>Host *</code> stanza higher in the file would otherwise win on <code>User</code> and <code>IdentityFile</code>.</p>
+  <p>Delete removes the block before destroying the instance, the reverse of the keypair: a block that outlives its host is stale but harmless, while a key removed early locks you out of a machine that still exists.</p>
+
   <h2>Exposure</h2>
   <table>
     <tr><th>Port</th><th>Exposure</th><th>Purpose</th></tr>

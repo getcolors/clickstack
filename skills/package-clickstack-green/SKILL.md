@@ -51,10 +51,12 @@ Convergence creates the initial HyperDX team named by `clickstack-admin-email`.
 This is required, not cosmetic: HyperDX configures the collector over OpAMP and
 sends nothing until a team exists, so before that the collector binds no OTLP
 receivers at all. The ingestion key is that team's, written to
-`/etc/clickstack/ingestion.env`; read it and the generated admin password with
+`/etc/clickstack/ingestion.env`. Convergence also writes a `~/.ssh/config`
+block, so reading it and the generated admin password needs no address:
 
 ```sh
-ssh -i ~/.ssh/<profile> root@SERVER 'cat /etc/clickstack/admin.env'
+ssh <profile> 'cat /etc/clickstack/admin.env'
+ssh <profile> 'cat /etc/clickstack/ingestion.env'
 ```
 
 A real create ends with public HTTPS acceptance checks on the UI and the OTLP
