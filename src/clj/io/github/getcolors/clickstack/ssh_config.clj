@@ -36,6 +36,22 @@
 (defn begin-marker [alias] (str "# BEGIN " alias " ANSIBLE MANAGED BLOCK"))
 (defn end-marker [alias] (str "# END " alias " ANSIBLE MANAGED BLOCK"))
 
+;; Transitional, paired with the removal task in the local play: the marker
+;; briefly carried the package name as well. Until that task is dropped, a
+;; block written under the old marker is still ours, and mistaking it for a
+;; hand-written stanza would make the never-adopt check refuse the very
+;; migration that is meant to clean it up. Drop both together.
+(defn superseded-begin-marker [alias]
+  (str "# BEGIN clickstack " alias " ANSIBLE MANAGED BLOCK"))
+(defn superseded-end-marker [alias]
+  (str "# END clickstack " alias " ANSIBLE MANAGED BLOCK"))
+
+(defn owned-markers
+  "Every begin/end pair this package recognises as its own."
+  [alias]
+  {:begin #{(begin-marker alias) (superseded-begin-marker alias)}
+   :end #{(end-marker alias) (superseded-end-marker alias)}})
+
 (defn host-patterns
   "The patterns a `Host` line declares, or nil when the line is not one."
   [line]
@@ -44,15 +60,16 @@
 
 (defn foreign-stanza-line
   "The 1-based line number of a `Host <alias>` stanza that this package did not
-  write, or nil. Lines between our own markers are ours and are skipped."
+  write, or nil. Lines between any of our own markers are ours and are skipped."
   [lines alias]
-  (loop [[line & more] lines n 1 inside? false]
-    (cond
-      (nil? line) nil
-      (= (str/trim line) (begin-marker alias)) (recur more (inc n) true)
-      (= (str/trim line) (end-marker alias)) (recur more (inc n) false)
-      (and (not inside?) (some #{alias} (host-patterns line))) n
-      :else (recur more (inc n) inside?))))
+  (let [{:keys [begin end]} (owned-markers alias)]
+    (loop [[line & more] lines n 1 inside? false]
+      (cond
+        (nil? line) nil
+        (contains? begin (str/trim line)) (recur more (inc n) true)
+        (contains? end (str/trim line)) (recur more (inc n) false)
+        (and (not inside?) (some #{alias} (host-patterns line))) n
+        :else (recur more (inc n) inside?)))))
 
 (defn leading-option-line
   "The 1-based line number of an option standing above the first `Host` or

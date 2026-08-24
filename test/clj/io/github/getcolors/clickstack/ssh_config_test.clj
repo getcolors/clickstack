@@ -49,6 +49,17 @@
                (str "Host " alias)]]
     (is (= 4 (ssh-config/foreign-stanza-line lines alias)))))
 
+(deftest a-block-under-the-superseded-marker-is-still-ours
+  ;; Otherwise the never-adopt check refuses the very migration meant to clean
+  ;; it up, which is exactly what happened on the first converge after the
+  ;; marker changed.
+  (let [alias "clickstack-vultr"
+        lines [(ssh-config/superseded-begin-marker alias)
+               (str "Host " alias)
+               "    HostName 198.51.100.1"
+               (ssh-config/superseded-end-marker alias)]]
+    (is (nil? (ssh-config/foreign-stanza-line lines alias)))))
+
 (deftest a-multi-pattern-host-line-counts
   (is (= 1 (ssh-config/foreign-stanza-line ["Host web clickstack-fixture db"]
                                            "clickstack-fixture"))))
