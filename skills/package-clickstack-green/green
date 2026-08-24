@@ -51,7 +51,7 @@
 ;; cannot resolve its own library says so rather than inventing a SHA or
 ;; silently falling back to whatever is lying around. `bb pin` refuses to stamp
 ;; a dirty or unpushed HEAD for the same reason.
-(def ^:private clickstack-sha nil)
+(def ^:private clickstack-sha "2c60d3488a14d229aee2379973118825e2a9bbbb")
 
 (def ^:private clickstack-git-url "https://github.com/getcolors/clickstack.git")
 (def ^:private green-git-url "https://github.com/getcolors/green.git")
