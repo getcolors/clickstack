@@ -30,9 +30,8 @@ services:
   otel-collector:
     image: <{ clickstack-otel-collector-image }>
     restart: unless-stopped
-    # Carries HYPERDX_API_KEY, generated once on this host and never rendered
-    # into a tracked or generated file. The collector authorizes ingestion
-    # against it.
+    # Carries HYPERDX_API_KEY, the team ingestion key minted by the app during
+    # convergence. Seeded empty on first boot and rewritten by clickstack-setup.
     env_file: [/etc/clickstack/ingestion.env]
     environment:
       CLICKHOUSE_ENDPOINT: "tcp://ch-server:9000?dial_timeout=10s"

@@ -12,7 +12,7 @@
   package owns the keypair, and requiring it would make conforming deployments
   invalid."
   [:profile :workdir :provider-compute :provider-dns :provider-backend
-   :compute-prevent-destroy :clickstack-host
+   :compute-prevent-destroy :clickstack-host :clickstack-admin-email
    :clickstack-hyperdx-image :clickstack-otel-collector-image
    :clickstack-clickhouse-image :clickstack-mongo-image :clickstack-caddy-image
    :vultr-name :vultr-region :vultr-plan :vultr-os-id
@@ -24,6 +24,7 @@
    :clickstack-clickhouse-image :clickstack-mongo-image :clickstack-caddy-image])
 
 (def host-re #"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$")
+(def email-re #"^[^@\s]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$")
 (def image-re #"^[^\s:@]+(?:/[^\s:@]+)*(?::[^\s:@]+|@sha256:[0-9a-f]{64})$")
 
 (defn missing? [x] (or (nil? x) (and (string? x) (str/blank? x))))
@@ -53,6 +54,9 @@
     (when-not (or (missing? (:clickstack-host opts))
                   (re-matches host-re (str (:clickstack-host opts))))
       [":clickstack-host must be a fully qualified hostname"])
+    (when-not (or (missing? (:clickstack-admin-email opts))
+                  (re-matches email-re (str (:clickstack-admin-email opts))))
+      [":clickstack-admin-email must be an email address"])
     (for [k image-keys
           :let [v (get opts k)]
           :when (and (not (missing? v)) (not (re-matches image-re (str v))))]

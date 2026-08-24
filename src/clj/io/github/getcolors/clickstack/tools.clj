@@ -107,6 +107,7 @@
      (spec (template "ansible" "cleanup.yml") (str dir "/cleanup.yml") data)
      (spec (template "ansible" "compose.yml") (str dir "/compose.yml") data)
      (spec (template "ansible" "Caddyfile") (str dir "/Caddyfile") data)
+     (spec (template "ansible" "setup.sh") (str dir "/setup.sh") data)
      (spec (template "ansible" "smoke.sh") (str dir "/smoke.sh") data)
      (raw-spec (str dir "/inventory.json") (inventory data))]))
 

@@ -23,8 +23,8 @@ HyperDX UI on everything else. Point an OTLP exporter at
 - Keep `compute-prevent-destroy: true`; deletion requires separate explicit
   authorization and a one-run environment override.
 - Build and dry-run before a real create.
-- Only Caddy 80/443 and key-only SSH are public; the ingestion key is generated
-  on the server and never leaves it.
+- Only Caddy 80/443 and key-only SSH are public; the admin password and the
+  ingestion key are generated on the server and never leave it.
 
 ```sh
 ./green build
@@ -46,6 +46,16 @@ deployment's state does not own, stops the run: verify at the provider before
 removing anything, and never delete a key whose fingerprint is not yours.
 Rotation is a rebuild. Supplying `vultr-ssh-keys` opts out and the package then
 touches no key material.
+
+Convergence creates the initial HyperDX team named by `clickstack-admin-email`.
+This is required, not cosmetic: HyperDX configures the collector over OpAMP and
+sends nothing until a team exists, so before that the collector binds no OTLP
+receivers at all. The ingestion key is that team's, written to
+`/etc/clickstack/ingestion.env`; read it and the generated admin password with
+
+```sh
+ssh -i ~/.ssh/<profile> root@SERVER 'cat /etc/clickstack/admin.env'
+```
 
 A real create ends with public HTTPS acceptance checks on the UI and the OTLP
 endpoint; the end-to-end ingest proof — one OTLP record through the collector

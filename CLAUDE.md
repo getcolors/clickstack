@@ -12,9 +12,22 @@ One public host carries both halves: Caddy serves the HyperDX UI and proxies
 OTLP/HTTP on the standard `/v1/{logs,traces,metrics}` paths to the collector,
 so an exporter needs only `https://<clickstack-host>` as its endpoint. Every
 other port is bound to loopback, which is why the firewall opens only 80/443
-and never 4317/4318. The ingestion key is generated once on the server and
-never enters a tracked or generated file. The first consumer is
-`../clickstack-vultr`.
+and never 4317/4318. The first consumer is `../clickstack-vultr`.
+
+## Why convergence creates the initial team
+
+HyperDX configures the collector over OpAMP and pushes nothing until a team
+exists, so before that the collector binds **no OTLP receivers at all** — 4317
+and 4318 are unbound and every exporter gets a connection reset. That is not a
+UI nicety to leave to a human; it is the difference between a deployment that
+ingests and one that cannot, so `clickstack-setup` registers the first user
+during convergence.
+
+It also settles where the ingestion key comes from: it is the team's `apiKey`,
+minted by the app and therefore unknowable in advance. The script reads it back
+and rewrites `/etc/clickstack/ingestion.env`, recreating the app and collector
+when it changes. Neither that key nor the generated admin password enters a
+tracked or generated file.
 
 ## The SSH keypair
 

@@ -17,12 +17,25 @@
     - ansible.builtin.file: {path: /opt/clickstack, state: directory, mode: "0755"}
     - ansible.builtin.file: {path: /etc/clickstack, state: directory, mode: "0755"}
 
-    - name: Generate the ingestion key once, on this host only
+    - name: Generate the admin credentials once, on this host only
       ansible.builtin.shell: |
         set -euo pipefail
         umask 077
-        echo "HYPERDX_API_KEY=$(openssl rand -hex 16)" > /etc/clickstack/ingestion.env
-      args: {creates: /etc/clickstack/ingestion.env, executable: /bin/bash}
+        {
+          echo "HYPERDX_ADMIN_EMAIL=admin@clickstack.example.com"
+          echo "HYPERDX_ADMIN_PASSWORD=Cs-$(openssl rand -hex 16)!"
+        } > /etc/clickstack/admin.env
+      args: {creates: /etc/clickstack/admin.env, executable: /bin/bash}
+
+    # The real ingestion key is the team's, minted by the app and unknowable
+    # until the stack is up. Compose refuses to start with a missing env_file,
+    # so the file is seeded empty here and rewritten by clickstack-setup.
+    - name: Seed the ingestion key file so Compose can start
+      ansible.builtin.copy:
+        dest: /etc/clickstack/ingestion.env
+        mode: "0600"
+        content: "HYPERDX_API_KEY=\n"
+        force: false
 
     - name: Install stack configuration
       ansible.builtin.copy:
@@ -32,6 +45,7 @@
       loop:
         - {src: compose.yml, dest: /opt/clickstack/compose.yml}
         - {src: Caddyfile, dest: /opt/clickstack/Caddyfile}
+        - {src: setup.sh, dest: /usr/local/sbin/clickstack-setup, mode: "0755"}
         - {src: smoke.sh, dest: /usr/local/sbin/clickstack-smoke, mode: "0755"}
       notify: Restart ClickStack
 
@@ -43,19 +57,33 @@
       register: compose_up
       changed_when: "'Created' in (compose_up.stdout + compose_up.stderr) or 'Recreated' in (compose_up.stdout + compose_up.stderr) or 'Started' in (compose_up.stdout + compose_up.stderr)"
 
-    - name: Wait for the collector to report healthy
+    - name: Wait for the collector supervisor to report healthy
       ansible.builtin.uri: {url: "http://127.0.0.1:13133", status_code: [200]}
       register: collector_health
       retries: 30
       delay: 10
       until: collector_health is succeeded
 
-    - name: Wait for the HyperDX UI on loopback
-      ansible.builtin.uri: {url: "http://127.0.0.1:8080", status_code: [200, 302]}
+    - name: Wait for the HyperDX API
+      ansible.builtin.uri: {url: "http://127.0.0.1:8000/installation", status_code: [200]}
       register: app_health
       retries: 30
       delay: 10
       until: app_health is succeeded
+
+    # Until a team exists the app pushes no OpAMP config and the collector has
+    # no OTLP receivers, so this is what makes the deployment able to ingest at
+    # all — not an optional convenience.
+    - name: Create the initial team and publish its ingestion key
+      ansible.builtin.command: /usr/local/sbin/clickstack-setup
+      register: clickstack_setup
+      changed_when: "'changed' in clickstack_setup.stdout"
+      notify: Recreate ClickStack services
+
+    - ansible.builtin.meta: flush_handlers
+
+    - name: Wait for the OTLP receiver to accept connections
+      ansible.builtin.wait_for: {host: 127.0.0.1, port: 4318, timeout: 300}
 
     - name: Prove ingestion reaches ClickHouse
       ansible.builtin.command: /usr/local/sbin/clickstack-smoke
@@ -68,4 +96,10 @@
   handlers:
     - name: Restart ClickStack
       ansible.builtin.command: docker compose up -d --remove-orphans
+      args: {chdir: /opt/clickstack}
+
+    # The ingestion key reaches the containers through env_file, so the app and
+    # collector are recreated rather than merely restarted when it changes.
+    - name: Recreate ClickStack services
+      ansible.builtin.command: docker compose up -d --force-recreate app otel-collector
       args: {chdir: /opt/clickstack}

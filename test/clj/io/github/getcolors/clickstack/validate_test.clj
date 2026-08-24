@@ -29,10 +29,11 @@
 (deftest reports-all-errors
   (let [errors (validate/state-errors
                 (fixture :clickstack-host "bad" :clickstack-hyperdx-image "floating"
+                         :clickstack-admin-email "not-an-email"
                          :provider-dns "other" :provider-compute "digitalocean"
                          :vultr-os-id "2284"))]
-    (is (<= 5 (count errors)))
-    (doseq [part ["host" "image" "provider-dns" "vultr" "os-id"]]
+    (is (<= 6 (count errors)))
+    (doseq [part ["host" "image" "admin-email" "provider-dns" "vultr" "os-id"]]
       (is (some #(str/includes? % part) errors) part))))
 
 (deftest accepts-a-digest-pin

@@ -11,6 +11,11 @@ provider-backend: r2
 compute-prevent-destroy: true
 
 clickstack-host: clickstack.example.com
+
+# Login identity for the initial HyperDX team, created during convergence.
+# The password is generated on the server; retrieve it over SSH.
+clickstack-admin-email: admin@clickstack.example.com
+
 clickstack-hyperdx-image: docker.hyperdx.io/hyperdx/hyperdx:2
 clickstack-otel-collector-image: docker.hyperdx.io/hyperdx/hyperdx-otel-collector:2
 clickstack-clickhouse-image: clickhouse/clickhouse-server:25.8

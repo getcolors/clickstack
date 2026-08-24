@@ -56,8 +56,13 @@ validates, and deletes nothing.
 `colors.yml` is the only file to edit, and holds non-secret values only.
 Credentials are `COLORS_PAR_*` variables in the gitignored `.envrc.private`:
 `COLORS_PAR_VULTR_API_KEY`, `COLORS_PAR_CLOUDFLARE_API_TOKEN`,
-`COLORS_PAR_R2_ACCESS_KEY_ID`, `COLORS_PAR_R2_SECRET_ACCESS_KEY`. The HyperDX
-ingestion key is generated on the server and is not supplied by the operator.
+`COLORS_PAR_R2_ACCESS_KEY_ID`, `COLORS_PAR_R2_SECRET_ACCESS_KEY`.
+
+`clickstack-admin-email` names the login for the initial HyperDX team, which
+convergence creates — the collector binds no OTLP receivers until a team
+exists. The admin password and the team's ingestion key are both generated on
+the server, into `/etc/clickstack/admin.env` and
+`/etc/clickstack/ingestion.env`; retrieve them over SSH.
 
 See [the configuration reference](skills/package-clickstack-green/references/configuration.md)
 for every key.

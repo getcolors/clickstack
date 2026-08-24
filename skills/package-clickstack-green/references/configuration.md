@@ -12,9 +12,11 @@ variables in the gitignored `.envrc.private`.
 | Cloudflare API token (zone-scoped) | `COLORS_PAR_CLOUDFLARE_API_TOKEN` |
 | R2 state backend | `COLORS_PAR_R2_ACCESS_KEY_ID`, `COLORS_PAR_R2_SECRET_ACCESS_KEY` |
 
-The HyperDX ingestion key is **not** here: it is generated once on the server
-into `/etc/clickstack/ingestion.env` (mode 0600) and never rendered into a
-tracked or generated file.
+Neither the HyperDX admin password nor the ingestion key is here. Convergence
+generates the password into `/etc/clickstack/admin.env` (mode 0600), creates
+the initial HyperDX team with it, and writes the team's ingestion key into
+`/etc/clickstack/ingestion.env` (mode 0600). Neither ever reaches a tracked or
+generated file.
 
 ## Keys
 
@@ -26,6 +28,7 @@ tracked or generated file.
 | `provider-dns` | Must be `cloudflare`. |
 | `provider-backend` | `local`, `s3`, or `r2`. |
 | `compute-prevent-destroy` | Keep `true`; guards `delete`. |
+| `clickstack-admin-email` | Login identity for the initial HyperDX team, created during convergence. The password is generated on the server. |
 | `clickstack-host` | Public hostname. Its registrable domain must be a Cloudflare zone; the package manages the proxied A record and Caddy obtains TLS. |
 | `clickstack-hyperdx-image` | HyperDX app image (tagged or digest-pinned). |
 | `clickstack-otel-collector-image` | HyperDX OpenTelemetry collector image. |
@@ -70,6 +73,27 @@ There is no rotation verb: Vultr key lists are ForceNew, so rotation is
 | 8080/8000 | loopback only | HyperDX UI and API, reached through Caddy |
 | 8123 | loopback only | ClickHouse HTTP |
 
+## The initial team, and why convergence creates it
+
+HyperDX configures the collector over OpAMP, and it pushes no configuration
+until a team exists. Until then the collector runs with **no OTLP receivers at
+all**: 4317 and 4318 are unbound and every exporter gets a connection reset. A
+ClickStack nobody has signed into is therefore not a running deployment, so
+`create` registers the first user rather than waiting for a human.
+
+That also fixes where the ingestion key comes from. It is the team's `apiKey`,
+minted by the app, so it cannot be chosen in advance — `clickstack-setup` reads
+it back after registration and writes it to `/etc/clickstack/ingestion.env`,
+recreating the app and collector when it changes. Both steps are idempotent:
+`/installation` reports whether a team exists, and the key is rewritten only
+when it actually differs.
+
+Retrieve the credentials over SSH:
+
+```sh
+ssh -i ~/.ssh/<profile> root@SERVER 'cat /etc/clickstack/admin.env'
+```
+
 ## Sending telemetry
 
 ```sh
@@ -87,6 +111,7 @@ use OTLP/HTTP.
 
 ```sh
 ssh -i ~/.ssh/<profile> root@SERVER 'cd /opt/clickstack && docker compose ps'
+ssh -i ~/.ssh/<profile> root@SERVER '/usr/local/sbin/clickstack-setup'
 ssh -i ~/.ssh/<profile> root@SERVER '/usr/local/sbin/clickstack-smoke'
 ssh -i ~/.ssh/<profile> root@SERVER 'cd /opt/clickstack && docker compose logs --tail 100 otel-collector'
 ```
@@ -103,3 +128,4 @@ sends one OTLP log and waits for the row to appear in `default.otel_logs`.
 | `already has an SSH key named …` and it matches yours | A previous delete left the provider key | Verify no host survives, delete that key at Vultr, retry |
 | `already has an SSH key named …` and it does not match | A foreign key shares the name | Do not delete it. Investigate, or change `profile` |
 | Acceptance fails on the OTLP endpoint | Caddy or the collector is not up | `docker compose ps`, then the collector logs |
+| Exporters get connection reset on 4317/4318 | No team exists, so the collector received no OpAMP config and bound no receivers | Run `clickstack-setup`, then confirm `/installation` reports `isTeamExisting: true` |

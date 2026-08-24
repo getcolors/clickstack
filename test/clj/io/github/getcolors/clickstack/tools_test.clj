@@ -29,8 +29,18 @@
 (deftest ansible-renders-the-whole-stack
   (let [targets (map #(str (:target %)) (tools/ansible-specs (fixture)))]
     (doseq [f ["ansible.cfg" "main.yml" "cleanup.yml" "compose.yml" "Caddyfile"
-               "smoke.sh" "inventory.json"]]
+               "setup.sh" "smoke.sh" "inventory.json"]]
       (is (some #(str/ends-with? % f) targets) f))))
+
+(deftest setup-carries-the-admin-email-and-no-password
+  ;; The team is created during convergence, so the login identity is rendered;
+  ;; its password is generated on the server and must never reach a rendered
+  ;; file.
+  (let [specs (tools/ansible-specs (fixture))
+        play (some #(when (str/ends-with? (str (:target %)) "main.yml") %) specs)
+        rendered (str (:data play))]
+    (is (str/includes? rendered "admin@clickstack.example.com"))
+    (is (not (str/includes? rendered "HYPERDX_ADMIN_PASSWORD=Cs-")))))
 
 (deftest acceptance-is-skipped-outside-a-real-create
   (doseq [event [:build :delete]]
