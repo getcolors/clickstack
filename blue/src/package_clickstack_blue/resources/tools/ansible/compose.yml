@@ -1,0 +1,97 @@
+# ClickStack: ClickHouse, MongoDB, the HyperDX OpenTelemetry collector, the
+# HyperDX app, and Caddy. Service names match upstream's compose file so the
+# images' built-in defaults (OPAMP_SERVER_URL, MONGO_URI, the ClickHouse
+# endpoint) keep working.
+#
+# Only Caddy publishes to the world. Every other port is bound to loopback:
+# the collector's OTLP receivers and the app's UI reach the internet through
+# Caddy on 443, which is why the firewall needs no 4317/4318 rule.
+services:
+  db:
+    image: <{ clickstack-mongo-image }>
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    networks: [internal]
+
+  ch-server:
+    image: <{ clickstack-clickhouse-image }>
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ulimits:
+      nofile: {soft: 262144, hard: 262144}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    ports: ["127.0.0.1:8123:8123"]
+    networks: [internal]
+
+  otel-collector:
+    image: <{ clickstack-otel-collector-image }>
+    restart: unless-stopped
+    # Carries HYPERDX_API_KEY, the team ingestion key minted by the app during
+    # convergence. Seeded empty on first boot and rewritten by clickstack-setup.
+    env_file: [/etc/clickstack/ingestion.env]
+    environment:
+      CLICKHOUSE_ENDPOINT: "tcp://ch-server:9000?dial_timeout=10s"
+      HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: default
+      HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA: "true"
+      HYPERDX_LOG_LEVEL: info
+      OPAMP_SERVER_URL: "http://app:4320"
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:13133:13133"
+    depends_on: [ch-server]
+    networks: [internal]
+
+  app:
+    image: <{ clickstack-hyperdx-image }>
+    restart: unless-stopped
+    # session.env carries EXPRESS_SESSION_SECRET, generated on this host.
+    # Without it HyperDX signs session cookies with a constant published in its
+    # own repository.
+    env_file: [/etc/clickstack/ingestion.env, /etc/clickstack/session.env]
+    environment:
+      FRONTEND_URL: "https://<{ clickstack-host }>"
+      HYPERDX_APP_URL: "https://<{ clickstack-host }>"
+      HYPERDX_APP_PORT: "8080"
+      HYPERDX_API_PORT: "8000"
+      HYPERDX_LOG_LEVEL: info
+      MONGO_URI: "mongodb://db:27017/hyperdx"
+      SERVER_URL: "http://127.0.0.1:8000"
+      OPAMP_PORT: "4320"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+      OTEL_SERVICE_NAME: hdx-oss-app
+      USAGE_STATS_ENABLED: "false"
+      # Seed the ClickHouse connection and the four standard sources so a fresh
+      # deployment is queryable without hand-configuring anything in the UI.
+      DEFAULT_CONNECTIONS: '[{"name":"Local ClickHouse","host":"http://ch-server:8123","username":"default","password":""}]'
+      DEFAULT_SOURCES: '[{"from":{"databaseName":"default","tableName":"otel_logs"},"kind":"log","timestampValueExpression":"Timestamp","name":"Logs","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,SeverityText,Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Local ClickHouse","traceSourceId":"Traces","sessionSourceId":"Sessions","metricSourceId":"Metrics"},{"from":{"databaseName":"default","tableName":"otel_traces"},"kind":"trace","timestampValueExpression":"Timestamp","name":"Traces","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"SpanName","serviceNameExpression":"ServiceName","eventAttributesExpression":"SpanAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,StatusCode,round(Duration/1e6),SpanName","traceIdExpression":"TraceId","spanIdExpression":"SpanId","durationExpression":"Duration","durationPrecision":9,"parentSpanIdExpression":"ParentSpanId","spanNameExpression":"SpanName","spanKindExpression":"SpanKind","statusCodeExpression":"StatusCode","statusMessageExpression":"StatusMessage","connection":"Local ClickHouse","logSourceId":"Logs","sessionSourceId":"Sessions","metricSourceId":"Metrics"},{"from":{"databaseName":"default","tableName":""},"kind":"metric","timestampValueExpression":"TimeUnix","name":"Metrics","resourceAttributesExpression":"ResourceAttributes","metricTables":{"gauge":"otel_metrics_gauge","histogram":"otel_metrics_histogram","sum":"otel_metrics_sum"},"connection":"Local ClickHouse","logSourceId":"Logs","traceSourceId":"Traces","sessionSourceId":"Sessions"},{"from":{"databaseName":"default","tableName":"hyperdx_sessions"},"kind":"session","timestampValueExpression":"TimestampTime","name":"Sessions","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,SeverityText,Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Local ClickHouse","logSourceId":"Logs","traceSourceId":"Traces","metricSourceId":"Metrics"}]'
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8000:8000"
+    depends_on: [ch-server, db]
+    networks: [internal]
+
+  caddy:
+    image: <{ clickstack-caddy-image }>
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - /opt/clickstack/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [app, otel-collector]
+    networks: [internal]
+
+networks:
+  internal:
+    internal: false
+volumes:
+  mongo-data:
+  clickhouse-data:
+  clickhouse-logs:
+  caddy-data:
+  caddy-config:

@@ -1,8 +1,9 @@
 # clickstack
 
-A Green Package Skill that provisions **ClickStack** — the ClickHouse
-observability stack: ClickHouse, MongoDB, the HyperDX OpenTelemetry collector,
-and the HyperDX UI — on one Vultr instance, behind Caddy and Cloudflare.
+A tri-colour Package Skill (green, red, blue) that provisions **ClickStack** —
+the ClickHouse observability stack: ClickHouse, MongoDB, the HyperDX
+OpenTelemetry collector, and the HyperDX UI — on one Vultr instance, behind
+Caddy and Cloudflare.
 
 ```sh
 npx skills add getcolors/clickstack
@@ -11,6 +12,10 @@ chmod +x green
 ./green build
 ./green create --dry-run
 ```
+
+The same deployment can run through the TypeScript (`package-clickstack-red`)
+or Python (`package-clickstack-blue`) implementation — all three render
+byte-identical artifacts from one `colors.yml`.
 
 `build` and `create --dry-run` need no credentials and contact nothing, which
 makes them the safe way to check a `colors.yml` edit.
@@ -72,13 +77,18 @@ for every key.
 ## Development
 
 ```sh
-bb test               # unit tests, including SSH-standard conformance
-bb golden             # render both fixtures and diff against committed output
-./scripts/launcher.sh # launcher payload and profile-guard checks
+cd green && bb test      # unit tests (canonical Clojure implementation)
+cd green && bb golden    # render both fixtures and diff against committed output
+cd green && bb golden:accept  # regenerate after an intended change — read the diff first
+cd red && bun test && bun run typecheck   # TypeScript implementation
+cd blue && uv run pytest                  # Python implementation
+./scripts/parity.sh      # all three colours render byte-identical trees
+./scripts/launcher.sh    # launcher payload and profile-guard checks
 ```
 
 `bb golden` covers keygen and opt-out mode separately; read a golden diff after
-a pin bump rather than accepting it.
+a pin bump rather than accepting it. Point the launchers at working trees with
+`CLICKSTACK_LIB_ROOT`, `GREEN_LIB_ROOT` and `ONCE_LIB_ROOT`.
 
 ## License
 

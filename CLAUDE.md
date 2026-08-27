@@ -2,8 +2,8 @@
 
 ## Repository
 
-`clickstack` is a Green-only Package Skill for a ClickStack observability
-server on one Vultr instance. OpenTofu manages the instance, a firewall
+`clickstack` is a tri-colour Package Skill (green, red, blue) for a ClickStack
+observability server on one Vultr instance. OpenTofu manages the instance, a firewall
 (22/80/443), and a proxied Cloudflare A record; Ansible converges a Docker
 Compose stack of ClickHouse, MongoDB, the HyperDX OpenTelemetry collector, the
 HyperDX app, and Caddy.
@@ -33,7 +33,8 @@ tracked or generated file.
 
 This package is born conforming to the workspace SSH Keypair Standard
 (`../workspace/standards/ssh-keypair.md`). Read that document before touching
-anything under `src/clj/io/github/getcolors/clickstack/ssh.clj`.
+anything under `green/src/clj/io/github/getcolors/clickstack/ssh.clj` or its
+red/blue counterparts.
 
 The behaviour is ONCE's — `io.github.getcolors.once.ssh` — deliberately reused
 rather than reimplemented, so one standard has one implementation. Absent
@@ -97,15 +98,31 @@ keeps it out of `.envrc.private`, `.colors/` and the goldens entirely.
 
 ## Commands
 
+The three implementations live in the tri-colour layout, matching `netbird`:
+canonical Clojure in `green/` (`green/bb.edn`, `green/deps.edn`, `green/src/`,
+`green/tasks/`, tests under `green/test/clj`), TypeScript/Bun in `red/`, and
+Python/uv in `blue/`. Green is canonical: a behavioural change lands in all
+three colours in the same commit and passes `scripts/parity.sh`, which renders
+both fixtures through every colour and diffs the trees — and the colour
+template trees (`red/resources`, blue's embedded `resources/`) — byte for byte.
+The two fixtures and the goldens are shared across colours at the repository
+root — `test/fixtures/` and `test/resources/golden/` — with
+`green/test/fixtures` and `green/test/resources` symlinks pointing at them.
+Each colour dir holds a launcher symlink to its skill payload (`green/green`,
+`red/red`, `blue/blue`).
+
 ```sh
-bb test
-bb golden
-bb golden:accept
-./scripts/launcher.sh
-./green build
-./green create --dry-run
-./green create                 # requires explicit authorization
-./green delete                 # guarded and destructive
+cd green && bb test
+cd green && bb golden
+cd green && bb golden:accept
+cd red && bun test && bun run typecheck
+cd blue && uv run pytest
+./scripts/parity.sh            # three colours, two fixtures, byte for byte
+./scripts/launcher.sh          # from the repository root
+cd green && ./green build
+cd green && ./green create --dry-run
+cd green && ./green create     # requires explicit authorization
+cd green && ./green delete     # guarded and destructive
 ```
 
 Never read `.envrc.private`, edit `.colors/`, export `COLORS_PAR_PROFILE`, or
@@ -114,12 +131,18 @@ must not touch `~/.ssh`.
 
 ## Coupling
 
-The package pins Green and ONCE in `deps.edn`. ONCE supplies the backend
-provider registry, the registrable-domain helper, and the whole SSH standard
-implementation — so the ONCE pin can never go below `bc06f2f`, the commit that
-moved the machine keypair into the operator's `~/.ssh`. Use `GREEN_LIB_ROOT`,
-`ONCE_LIB_ROOT`, and `CLICKSTACK_LIB_ROOT` for working-tree development. Final
-launchers use a pushed SHA managed by `bb pin`; deployment launchers are
+The package pins Green and ONCE in `green/deps.edn`, the Red SDK and
+`package-once-red` in `red/package.json`, and the Blue SDK and
+`package-once-blue` in `blue/pyproject.toml`. All three colours pin ONCE at the
+**same rev** — ONCE's own parity is what guarantees its colours agree per
+commit. ONCE supplies the backend provider registry, the registrable-domain
+helper, and the whole SSH standard implementation — so the ONCE pin can never
+go below `bc06f2f`, the commit that moved the machine keypair into the
+operator's `~/.ssh`. Use `GREEN_LIB_ROOT`, `ONCE_LIB_ROOT`, and
+`CLICKSTACK_LIB_ROOT` for working-tree development (`CLICKSTACK_LIB_ROOT`
+names the repository root for every colour; red also accepts the `red/` dir
+directly). Final launchers use a pushed SHA managed by `bb pin`, which stamps
+all three payloads from their unpinned birth forms; deployment launchers are
 copies, not symlinks.
 
 ## Documentation
