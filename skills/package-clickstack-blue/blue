@@ -4,7 +4,7 @@
 # dependencies = ["package-clickstack-blue", "blue"]
 #
 # [tool.uv.sources]
-# package-clickstack-blue = { git = "https://github.com/getcolors/clickstack.git", rev = "4756aa2662a5a8b909eb9ee290560eca163696ac", subdirectory = "blue" }
+# package-clickstack-blue = { git = "https://github.com/getcolors/clickstack.git", rev = "99068621628af6ac670af1d0914428ba2166836f", subdirectory = "blue" }
 # blue = { git = "https://github.com/getcolors/blue.git", rev = "290f313ead5ca162875c33a049c880da017eae09" }
 #
 # [tool.uv]
