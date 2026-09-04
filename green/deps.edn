@@ -2,12 +2,13 @@
  :deps {org.clojure/clojure       {:mvn/version "1.12.5"}
         io.github.getcolors/green {:git/url "https://github.com/getcolors/green.git"
                                    :git/sha "ceb4159a19ec281d60f10d11295c05c5de5f1c42"}
-        ;; 417d5f7 is where ONCE gained `compute`, the Compute Provider
-        ;; Standard's operations this package delegates to; bc06f2f, below it,
-        ;; is where ONCE moved the machine keypair into the operator's ~/.ssh.
-        ;; The pin cannot go below either.
+        ;; eea43c2 is where ONCE's `compute` — the Compute Provider Standard's
+        ;; operations this package delegates to — agreed on one malformed-CIDR
+        ;; message in every colour; bc06f2f, below it, is where ONCE moved the
+        ;; machine keypair into the operator's ~/.ssh. The pin cannot go below
+        ;; either.
         io.github.getcolors/once  {:git/url "https://github.com/getcolors/once.git"
-                                   :git/sha "417d5f733b8bf92b8d65ebb821de142af08ce1ac"
+                                   :git/sha "eea43c2fe0d8c1d45d07ccfee41edc81ea4c7c6e"
                                    :deps/root "green"}}
  :aliases {:dev {:extra-paths ["test/clj" "test/resources"]}
            :test {:extra-paths ["test/clj" "test/resources"]
