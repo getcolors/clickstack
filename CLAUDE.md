@@ -214,7 +214,13 @@ commit. ONCE supplies the backend provider registry, the registrable-domain
 helper, the whole SSH standard implementation, and the Compute Provider
 Standard's operations (`compute`) — so the ONCE pin can never go below the
 commit that added `compute`, itself above `bc06f2f`, the commit that moved the
-machine keypair into the operator's `~/.ssh`. Use `GREEN_LIB_ROOT`, `ONCE_LIB_ROOT`, and
+machine keypair into the operator's `~/.ssh`. The ONCE and green pins also
+move together: ONCE `38e3cd6` trusts the SDK's step error alone when it reads
+a state that does not exist yet, so it needs green `3f33f5d`, where the green
+SDK reports a tofu launch failure (a missing stage directory, a missing
+binary) as that step error the way red and blue always did — an older green
+under that ONCE crashes a fresh clone's create instead of reporting its
+credentials. Use `GREEN_LIB_ROOT`, `ONCE_LIB_ROOT`, and
 `CLICKSTACK_LIB_ROOT` for working-tree development (`CLICKSTACK_LIB_ROOT`
 names the repository root for every colour; red also accepts the `red/` dir
 directly). Final launchers use a pushed SHA managed by `bb pin`, which stamps
