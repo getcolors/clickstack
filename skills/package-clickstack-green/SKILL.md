@@ -1,6 +1,6 @@
 ---
 name: package-clickstack-green
-description: Provisions ClickStack — ClickHouse, MongoDB, the HyperDX OpenTelemetry collector and UI — as a single-server observability stack on one Vultr instance.
+description: Provisions ClickStack — ClickHouse, MongoDB, the HyperDX OpenTelemetry collector and UI — as a single-server observability stack on one Vultr instance or one DigitalOcean droplet.
 license: MIT
 ---
 
@@ -15,6 +15,26 @@ OTLP/HTTP on `/v1/{logs,traces,metrics}` to the collector, and serves the
 HyperDX UI on everything else. Point an OTLP exporter at
 `https://<clickstack-host>` with the server-generated ingestion key as its
 `authorization` header.
+
+## Compute providers
+
+`provider-compute` selects `vultr` or `digitalocean`; each provider has its own
+credential and its own provider-scoped keys, and the keys of the other
+provider are ignored, so one `colors.yml` can carry both.
+
+| Provider | Credential | Keys |
+|---|---|---|
+| `vultr` | `COLORS_PAR_VULTR_API_KEY` | `vultr-region`, `vultr-plan`, `vultr-os-id`, `vultr-ssh-sources`, `vultr-http-sources` |
+| `digitalocean` | `COLORS_PAR_DO_TOKEN` | `digitalocean-region`, `digitalocean-size`, `digitalocean-image`, `digitalocean-ssh-sources`, `digitalocean-http-sources` |
+
+On DigitalOcean the droplet joins the region's default VPC, discovered at plan
+time; `digitalocean-vpc-uuid` and `digitalocean-vpc-cidr` are refused, because
+this package creates and pins no VPC. `<provider>-name` is optional and
+defaults to the profile. Keygen mode (below) works on both providers.
+
+**Switching providers is a rebuild, never an apply.** A profile whose state
+already holds a machine refuses a create or delete under a different
+`provider-compute` — set it back, `delete`, then switch.
 
 ## Safety
 
@@ -35,17 +55,17 @@ HyperDX UI on everything else. Point an OTLP exporter at
 ## The machine keypair
 
 The deployment owns its SSH key per the workspace SSH Keypair Standard. With no
-`vultr-ssh-keys` in `colors.yml`, the first real `create` generates
-`~/.ssh/<profile>`, registers it at Vultr under the profile name, and a
-successful `delete` removes it last.
+`vultr-ssh-keys` (or `digitalocean-ssh-keys`) in `colors.yml`, the first real
+`create` generates `~/.ssh/<profile>`, registers it at the provider under the
+profile name, and a successful `delete` removes it last.
 
 The key lives outside the checkout, so cloning the deployment repository
 elsewhere does not carry access — copy `~/.ssh/<profile>`(`.pub`) deliberately.
-A key with no state, or a Vultr key named after the profile that this
+A key with no state, or a provider key named after the profile that this
 deployment's state does not own, stops the run: verify at the provider before
 removing anything, and never delete a key whose fingerprint is not yours.
-Rotation is a rebuild. Supplying `vultr-ssh-keys` opts out and the package then
-touches no key material.
+Rotation is a rebuild. Supplying `<provider>-ssh-keys` opts out and the package
+then touches no key material.
 
 Convergence creates the initial HyperDX team named by `clickstack-admin-email`.
 This is required, not cosmetic: HyperDX configures the collector over OpAMP and

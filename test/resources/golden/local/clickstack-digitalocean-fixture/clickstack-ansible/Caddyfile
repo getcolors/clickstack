@@ -1,0 +1,24 @@
+# One public host carries both halves of the stack. OTLP/HTTP keeps its
+# standard paths, so an exporter configured with
+# `https://clickstack.example.com` as its endpoint reaches the collector with no
+# extra path configuration; everything else is the HyperDX UI. Because
+# ingestion arrives here, the collector's own 4317/4318 stay on loopback and
+# the firewall opens only 80/443.
+clickstack.example.com {
+	encode zstd gzip
+
+	@otlp path /v1/logs* /v1/traces* /v1/metrics*
+	handle @otlp {
+		reverse_proxy otel-collector:4318
+	}
+
+	handle {
+		reverse_proxy app:8080
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+}

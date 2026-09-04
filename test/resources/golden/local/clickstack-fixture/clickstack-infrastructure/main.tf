@@ -88,6 +88,7 @@ resource "vultr_instance" "clickstack" {
 
 output "params" {
   value = {
+    provider = "vultr"
     ip     = vultr_instance.clickstack.main_ip
     user   = "root"
     sudoer = "root"

@@ -1,4 +1,4 @@
-from conftest import fixture, optout
+from conftest import do_fixture, do_optout, fixture, optout
 from package_clickstack_blue import validate
 
 
@@ -8,6 +8,140 @@ def test_fixture_is_valid():
 
 def test_optout_fixture_is_valid():
     assert validate.state_errors(optout()) == []
+
+
+def test_digitalocean_fixtures_are_valid():
+    assert validate.state_errors(do_fixture()) == []
+    assert validate.state_errors(do_optout()) == []
+
+
+# --- the compute-provider registry
+
+
+def test_unsupported_provider_names_the_advertised_ones():
+    assert ":provider-compute must be one of digitalocean, vultr" in \
+        validate.state_errors(fixture({"provider-compute": "hetzner"}))
+
+
+def test_required_keys_follow_the_selected_provider():
+    assert ":digitalocean-size is required" in validate.state_errors(do_fixture({"digitalocean-size": None}))
+    assert ":vultr-plan is required" in validate.state_errors(fixture({"vultr-plan": None}))
+    # The other provider's keys are neither required nor refused, so one
+    # colors.yml can carry both and move between providers by one edit.
+    assert not any("vultr" in e for e in validate.state_errors(do_fixture()))
+    assert validate.state_errors(fixture({"digitalocean-region": "ams3",
+                                          "digitalocean-size": "s-1vcpu-1gb"})) == []
+    assert validate.state_errors(do_fixture({"vultr-os-id": "not-checked-here"})) == []
+
+
+def test_name_and_machine_key_are_never_required():
+    for errors in [validate.state_errors(fixture({"vultr-name": None})),
+                   validate.state_errors(do_fixture())]:
+        assert not any("-name" in e for e in errors)
+        assert not any("-ssh-keys" in e for e in errors)
+
+
+def test_vultr_os_id_is_checked_on_vultr_only():
+    assert ":vultr-os-id must be Vultr's numeric operating-system id" in \
+        validate.state_errors(fixture({"vultr-os-id": "2284"}))
+    assert validate.state_errors(do_fixture({"vultr-os-id": "2284"})) == []
+
+
+def test_digitalocean_refuses_a_pinned_or_created_vpc():
+    errors = validate.state_errors(do_fixture({"digitalocean-vpc-uuid": "abc",
+                                               "digitalocean-vpc-cidr": "10.0.0.0/16"}))
+    assert any(e.startswith(":digitalocean-vpc-uuid must be absent") for e in errors)
+    assert any(e.startswith(":digitalocean-vpc-cidr must be absent") for e in errors)
+    # An unselected provider's keys are ignored, VPC keys included.
+    assert validate.state_errors(fixture({"digitalocean-vpc-uuid": "abc"})) == []
+
+
+# --- the compute name
+
+
+def test_compute_name_falls_back_to_the_profile():
+    assert validate.compute_name(do_fixture()) == "clickstack-digitalocean-fixture"
+    assert validate.compute_name(do_optout()) == "clickstack-digitalocean-optout"
+    assert validate.compute_name(fixture({"vultr-name": None})) == "clickstack-fixture"
+    assert validate.compute_name(fixture({"vultr-name": ""})) == "clickstack-fixture"
+    assert validate.compute_name(fixture({"vultr-name": "REPLACE_ME"})) == "clickstack-fixture"
+    assert validate.compute_name(fixture({"vultr-name": "custom-label"})) == "custom-label"
+    # The override is read from the selected provider's key alone.
+    assert validate.compute_name(do_fixture({"vultr-name": "custom-label"})) == \
+        "clickstack-digitalocean-fixture"
+
+
+def test_the_name_override_is_validated_against_the_providers_rules():
+    assert ":vultr-name must be a safe 1-63 character name" in \
+        validate.state_errors(fixture({"vultr-name": "no spaces!"}))
+    assert ":vultr-name must be a safe 1-63 character name" in \
+        validate.state_errors(fixture({"vultr-name": "a" * 64}))
+    # Vultr labels are console text; DigitalOcean droplet names are hostnames,
+    # so an underscore that Vultr accepts fails at DigitalOcean.
+    assert validate.state_errors(fixture({"vultr-name": "invalid_name"})) == []
+    err = (":digitalocean-name must be a hostname-like name: lowercase letters, "
+           "digits, dots and hyphens, 1-63 characters")
+    for bad in ["invalid_name", "Upper", "-leading", "a" * 64]:
+        assert err in validate.state_errors(do_fixture({"digitalocean-name": bad})), bad
+    assert validate.state_errors(do_fixture({"digitalocean-name": "click.stack-01"})) == []
+
+
+def test_compute_key_is_provider_scoped():
+    assert validate.compute_key(fixture(), "ssh-sources") == "vultr-ssh-sources"
+    assert validate.compute_key(do_fixture(), "http-sources") == "digitalocean-http-sources"
+
+
+# --- the network contract
+
+
+def test_cidr_syntax():
+    for ok in ["0.0.0.0/0", "10.0.0.0/8", "203.0.113.7/32", "::/0", "2001:db8::/32",
+               "fe80::1/128", "2001:db8:0:0:0:0:0:1/64"]:
+        assert validate.cidr(ok), ok
+    for bad in ["10.0.0.0", "10.0.0.256/8", "10.0.0.0/33", "2001:db8::/129", "example.com/24",
+                "1:::2/64", "2001:db8::1::2/64", "1:2:3:4:5:6:7:8:9/64", "", "/24", "10.0.0.0/8/8"]:
+        assert not validate.cidr(bad), bad
+
+
+def test_ssh_sources_must_not_be_empty():
+    assert ":vultr-ssh-sources must list at least one CIDR" in \
+        validate.state_errors(fixture({"vultr-ssh-sources": []}))
+    assert ":digitalocean-ssh-sources must list at least one CIDR" in \
+        validate.state_errors(do_fixture({"digitalocean-ssh-sources": " , "}))
+    # No public HTTP is a legitimate deployment.
+    assert validate.state_errors(fixture({"vultr-http-sources": []})) == []
+    assert validate.state_errors(do_fixture({"digitalocean-http-sources": []})) == []
+
+
+def test_malformed_sources_are_refused_before_any_provider_call():
+    assert ':vultr-http-sources entry "10.0.0.0" is not an IPv4 or IPv6 CIDR' in \
+        validate.state_errors(fixture({"vultr-http-sources": ["0.0.0.0/0", "10.0.0.0"]}))
+    assert ':digitalocean-ssh-sources entry "office.example.com/32" is not an IPv4 or IPv6 CIDR' in \
+        validate.state_errors(do_fixture({"digitalocean-ssh-sources": "office.example.com/32"}))
+    # Only the selected provider's lists are checked.
+    assert validate.state_errors(do_fixture({"vultr-ssh-sources": ["garbage"]})) == []
+
+
+# --- provider switching is a rebuild
+
+
+def test_provider_state_is_compared_with_the_selection():
+    assert validate.provider_state_errors(fixture(), None) == []
+    assert validate.provider_state_errors(fixture(), {"provider": "vultr", "ip": "203.0.113.9"}) == []
+    assert validate.provider_state_errors(do_fixture(), {"provider": "digitalocean"}) == []
+    assert validate.provider_state_errors(fixture(), {"provider": "digitalocean", "ip": "203.0.113.9"}) == \
+        ["state holds a digitalocean machine; set provider-compute back to digitalocean and delete first"]
+    assert validate.provider_state_errors(do_fixture(), {"provider": "vultr"}) == \
+        ["state holds a vultr machine; set provider-compute back to vultr and delete first"]
+
+
+def test_legacy_state_without_a_provider_is_the_default_providers():
+    # Every deployment created before adoption recorded no provider and runs
+    # the only provider the package ever offered.
+    assert validate.provider_state_errors(fixture(), {"ip": "203.0.113.9"}) == []
+    [error] = validate.provider_state_errors(do_fixture(), {"ip": "203.0.113.9"})
+    assert "no recorded provider" in error
+    assert "set provider-compute back to vultr and delete first" in error
 
 
 def test_machine_key_is_not_required():
@@ -25,10 +159,9 @@ def test_reports_all_errors():
     errors = validate.state_errors(fixture({
         "clickstack-host": "bad", "clickstack-hyperdx-image": "floating",
         "clickstack-admin-email": "not-an-email",
-        "provider-dns": "other", "provider-compute": "digitalocean",
-        "vultr-os-id": "2284"}))
-    assert len(errors) >= 6
-    for part in ["host", "image", "admin-email", "provider-dns", "vultr", "os-id"]:
+        "provider-dns": "other", "provider-compute": "hetzner"}))
+    assert len(errors) >= 5
+    for part in ["host", "image", "admin-email", "provider-dns", "provider-compute"]:
         assert any(part in e for e in errors), part
 
 
@@ -49,3 +182,14 @@ def test_names_all_package_secrets():
         assert name in errors, name
     # The ingestion key is generated on the server, never supplied.
     assert "INGESTION" not in errors
+    assert "COLORS_PAR_DO_TOKEN" not in errors
+
+
+def test_secrets_and_tofu_env_follow_the_selected_provider():
+    errors = "\n".join(validate.secret_errors(do_fixture()))
+    assert "COLORS_PAR_DO_TOKEN" in errors
+    assert "COLORS_PAR_CLOUDFLARE_API_TOKEN" in errors
+    assert "COLORS_PAR_VULTR_API_KEY" not in errors
+    assert validate.tofu_env(do_fixture(), "provider-compute") == {"do-token": "DIGITALOCEAN_TOKEN"}
+    assert validate.tofu_env(fixture(), "provider-compute") == {"vultr-api-key": "VULTR_API_KEY"}
+    assert validate.tofu_env(fixture({"provider-compute": "hetzner"}), "provider-compute") == {}
