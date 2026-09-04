@@ -36,7 +36,7 @@ import { homedir } from "node:os";
 // directory, which would halt Bun's upward resolution of `package-clickstack-red`
 // and break the development symlink at red/red.
 const PINS = {
-  "package-clickstack-red": "github:getcolors/clickstack#68887b5055a31c11be9a808b6a1fe0974755bb13",
+  "package-clickstack-red": "github:getcolors/clickstack#4756aa2662a5a8b909eb9ee290560eca163696ac",
   "package-once-red": "github:getcolors/once#417d5f733b8bf92b8d65ebb821de142af08ce1ac",
   "red": "github:getcolors/red#db9bfe61282e2093f4098bf5a6ee0cd10added6e",
 };
