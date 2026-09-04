@@ -1,5 +1,6 @@
 (ns io.github.getcolors.clickstack.workflow-test
-  (:require [clojure.string :as str]
+  (:require [babashka.fs :as fs]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [io.github.getcolors.clickstack.validate-test :refer [fixture do-fixture]]
             [io.github.getcolors.clickstack.workflow :as workflow]))
@@ -115,6 +116,21 @@
     (is (not (str/includes? (:green/err r) "could not read")))
     (is (not (str/includes? (:green/err r) "state holds")))
     (is (str/includes? (:green/err r) "COLORS_PAR_VULTR_API_KEY"))))
+
+(deftest a-real-create-on-a-fresh-work-directory-reports-the-credentials-not-a-crash
+  ;; No state stub: the real `state-output` runs against a work directory
+  ;; that holds no stage yet, as a fresh clone's does. Green's SDK shells out
+  ;; to tofu in a directory that does not exist, which surfaces as a
+  ;; java.io.IOException from clojure.java.shell rather than the SDK's step
+  ;; error; ONCE's `read-state` counts that as an unreadable state, so the
+  ;; create reports its credentials instead of crashing.
+  (let [work (str (fs/create-temp-dir {:prefix "clickstack-fresh"}))]
+    (try
+      (let [r (workflow/start-step (assoc (fixture) :workdir work :green/event :create) {})]
+        (is (= 2 (:green/exit r)))
+        (is (str/includes? (str (:green/err r)) "COLORS_PAR_VULTR_API_KEY"))
+        (is (not (str/includes? (str (:green/err r)) "could not read"))))
+      (finally (fs/delete-tree work)))))
 
 (deftest an-unreadable-backend-fails-a-real-delete-closed
   ;; Swallowing it is how a teardown ends up converging against 192.0.2.10.

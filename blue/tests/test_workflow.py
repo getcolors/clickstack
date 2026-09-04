@@ -140,6 +140,18 @@ async def test_an_unreadable_backend_counts_as_no_state_on_create(unreadable):
     assert "COLORS_PAR_VULTR_API_KEY" in result["blue/err"]
 
 
+async def test_a_real_create_on_a_fresh_work_directory_reports_the_credentials_not_a_crash(tmp_path):
+    # No state stub: the real `state_output` runs against a work directory
+    # that holds no stage yet, as a fresh clone's does. The SDK's output read
+    # raises its StepError there, which ONCE's `read_state` counts as an
+    # unreadable state, so the create reports its credentials.
+    result = await workflow.start_step(
+        {**fixture(), "workdir": str(tmp_path), "blue/event": "create"}, env={})
+    assert result["blue/exit"] == 2
+    assert "COLORS_PAR_VULTR_API_KEY" in result["blue/err"]
+    assert "could not read" not in result["blue/err"]
+
+
 async def test_an_unreadable_backend_fails_a_real_delete_closed(unreadable, tmp_path, monkeypatch):
     # Swallowing it is how a teardown ends up converging against 192.0.2.10.
     monkeypatch.setenv("HOME", str(tmp_path))

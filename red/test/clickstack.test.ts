@@ -711,6 +711,22 @@ describe("workflow", () => {
     expect(String(result["red/err"])).toContain("COLORS_PAR_VULTR_API_KEY");
   });
 
+  test("a real create on a fresh work directory reports the credentials, not a crash", async () => {
+    // No reader stub: the real `stateOutput` runs against a work directory
+    // that holds no stage yet, as a fresh clone's does. The SDK's output read
+    // throws its StepError there, which ONCE's `readState` counts as an
+    // unreadable state, so the create reports its credentials.
+    const work = mkdtempSync(join(tmpdir(), "clickstack-red-fresh"));
+    try {
+      const result = await workflow.startStep(fixture({ workdir: work, "red/event": "create" }), {});
+      expect(result["red/exit"]).toBe(2);
+      expect(String(result["red/err"])).toContain("COLORS_PAR_VULTR_API_KEY");
+      expect(String(result["red/err"])).not.toContain("could not read");
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
   test("an unreadable backend fails a real delete closed", async () => {
     // Swallowing it is how a teardown ends up converging against 192.0.2.10.
     const result = await startUnreadable(fixture({ ...credentials, "red/event": "delete",
