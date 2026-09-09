@@ -72,9 +72,9 @@ Google Application Default Credentials, and OCI its configured profile.
 Other token adapters use the library's `COLORS_PAR_*` bindings. S3 also uses
 the ambient AWS credential chain.
 
-External key references additionally require `ssh-private-key-path` pointing
-to the operator's existing private key. The library validates access without
-replacing or deleting external key material.
+External key references may set `ssh-private-key-path` for an explicit identity,
+or use existing operator/agent SSH configuration. Verify access before a real
+operation. External key material is never replaced or deleted.
 
 ### The firewall sources
 
