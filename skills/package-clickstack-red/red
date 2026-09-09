@@ -38,7 +38,7 @@ import { homedir } from "node:os";
 // Compute and SDK revisions resolve through the package dependency.
 // Repeating the same Git dependencies here breaks Bun cold installs.
 const PINS = {
-  "package-clickstack-red": "github:getcolors/clickstack#d495f422d3117f5409df6c50dfbe0865e9af2d9a",
+  "package-clickstack-red": "github:getcolors/clickstack#8b13a8a8364f8e3c501947aa753f7019339af471",
   "package-once-red": "github:getcolors/once#38e3cd66674a32fb96605e1b17ae6791086ad5c1",
 };
 
