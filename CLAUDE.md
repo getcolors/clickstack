@@ -3,7 +3,7 @@
 ## Repository
 
 `clickstack` is a tri-colour Package Skill (green, red, blue) for a ClickStack
-observability server on one Vultr instance or one DigitalOcean droplet.
+observability server on one VM through the shared colors-compute library.
 OpenTofu manages the machine, a provider firewall (22/80/443), and a proxied
 Cloudflare A record; Ansible converges a Docker Compose stack of ClickHouse,
 MongoDB, the HyperDX OpenTelemetry collector, the HyperDX app, and Caddy.
@@ -14,71 +14,40 @@ so an exporter needs only `https://<clickstack-host>` as its endpoint. Every
 other port is bound to loopback, which is why the firewall opens only 80/443
 and never 4317/4318. The first consumer is `../clickstack-vultr`.
 
-## Two compute providers
+## Shared compute ownership
 
-The package supports two compute providers, selected by template directory —
-`tools/infrastructure/vultr/` and `tools/infrastructure/digitalocean/` —
-rather than by conditionals, so a build is the only thing that proves a
-provider's tree renders at all. The registry is `compute-providers` in
-`validate.clj` (mirrored in `validate.ts` and `validate.py`): provider name to
-its required keys, its secret (`:vultr-api-key` or `:do-token`), and the
-environment variable OpenTofu reads it from. The keys of that map are the
-advertised providers; keys of the unselected provider are accepted and
-ignored, never refused, so one `colors.yml` moves between providers by one
-edit. `<provider>-name` is optional and resolves through `compute-name`,
-profile by default (Compute Name Standard); the templates interpolate that one
-value for the label, the firewall name and `params.name` and never branch.
-`compute-key` is how the shared steps reach `<provider>-ssh-sources` and
-`<provider>-http-sources`.
+All three colors depend on `colors-compute`, currently pinned to `3451a05e719b0ad6809f3c88b241a8c010b8f58b`.
+Read `../workspace/standards/compute-provider.md`, `compute-name.md` and
+`compute-cluster.md` before changing this boundary. This package owns only
+application requirements and singleton topology: role null, count 1. Its
+`compute` module delegates to library `plan_deployment`, `orchestrate` and
+`read_deployment`; do not add a provider registry, provider dispatch, compute
+OpenTofu templates, backend implementation, state writer or key lifecycle here.
+A newly supported provider requires only a library dependency update in consumers.
+The default remains `vultr`; provider capabilities and option validation
+are defined by the library. Neutral `clickstack-ssh-sources` and
+`clickstack-http-sources` are accepted alongside the selected adapter's legacy keys.
 
-Every provider's compute stage outputs the same `params` —
-`{provider, ip, user, sudoer, name, ssh_key_id (keygen only)}` — and
-`provider` is the switch guard. Both providers share one state key, so a
-changed `provider-compute` on a profile whose state already holds a machine
-would plan a cross-provider replacement, and a delete would render and destroy
-the *selected* provider's template against the wrong lifecycle. `start-step`
-therefore reads the state once, up front, with backend credentials alone, and
-a validator placed after `state-errors` and before the credential check
-refuses a real create or delete whose recorded provider differs from the
-selected one (`state holds a <recorded> machine; set provider-compute back to
-<recorded> and delete first`). The order is deliberate: a mistaken provider
-edit reports the actionable error, not a missing token for the provider that
-was just selected. A recorded `params` without `provider` predates this
-package recording one and is treated as Vultr, the only provider it ever
-offered. An unreadable backend is not an empty state: on a real create it
-counts as no state (a fresh clone has none), on a real delete `adopt-state`
-fails closed rather than proceeding with nothing to address, and a real create
-whose compute output carries no `ip` refuses to converge against the
-documentation address (`resolved-compute`).
+Build writes library documents under `compute/shared` and `compute/nodes/0`.
+Each stage receives the library `backend_plan` configuration. Remote state keys
+are `<profile>/compute/shared.tfstate` and `<profile>/compute/nodes/0.tfstate`;
+S3 uses ambient AWS credentials, R2 binds its explicit backend credentials in
+private configuration. The deployment journal serializes mutations. Compute
+credential checks occur inside the library after ownership/state inspection.
+DNS remains an application stage with its separate `<profile>/clickstack-dns.tfstate`.
 
-The operations behind all of that are not this package's code. Since the
-delegation, ONCE's `compute` namespace (`io.github.getcolors.once.compute`,
-the `compute` export of `package-once-red`, `package_once_blue.compute`)
-implements the Compute Provider Standard: selection, the CIDR grammar and the
-network contract, the name rules, the switch and legacy-state refusals, the
-missing-`ip` refusal, the state read and its adoption. What lives here is the
-data and the wiring — the registry, the default provider, the `spec` value in
-each colour's `validate` that hands both plus the sources map to ONCE, the
-templates, the fixtures and goldens, `state-output`, and the `start-step`
-preflight that calls ONCE's functions in the order above. `compute-name`,
-`compute-key`, `cidrs`, `fallback-params` and `resolved-compute` remain as
-package-named aliases so `tools` and the tests read as before. The
-pure-function matrix (CIDR table, name rules, per-provider checks, the switch
-rules) is tested in ONCE, in all three colours and by its parity drivers;
-this repository tests the wiring — one test per safety boundary through
-`start-step` — and one spec-content test per colour, so a colour whose spec
-drifts fails in that colour. clickstack is the reference consumer of that
-namespace.
+The library refuses existing `<profile>/clickstack-infrastructure.tfstate` before
+mutation. That old monolithic state needs explicit ownership migration or
+teardown using the original package version. Never delete a state object to
+bypass this refusal. Unreadable state, identity mismatches, ambiguous resource
+ownership and live results without an address fail closed. Build-only planned
+addresses must never become fallback targets for create/delete.
 
-The provider firewall is the load-bearing network layer on both providers and
-Ansible manages no host firewall for its ports. `state-errors` refuses an
-empty `<provider>-ssh-sources` and any entry that is not a syntactically valid
-IPv4 or IPv6 CIDR, before any provider call; an empty HTTP list means no public
-HTTP. On DigitalOcean the droplet joins the region's default VPC, discovered
-at plan time, and `digitalocean-vpc-uuid` and `digitalocean-vpc-cidr` are
-refused. The DigitalOcean template emits its 80/443 rules through a `dynamic`
-block because a DigitalOcean inbound rule with no source is an API error, not
-a closed port.
+The joined node supplies the address, login user, provider identity and SSH
+identity for downstream application steps. Do not assume the user is root.
+No private network is requested by default. Explicit network references and
+adapter capabilities are library concerns. The ingress policy is TCP22/80/443;
+empty HTTP sources close HTTP ingress.
 
 ## Why convergence creates the initial team
 
@@ -95,67 +64,45 @@ and rewrites `/etc/clickstack/ingestion.env`, recreating the app and collector
 when it changes. Neither that key nor the generated admin password enters a
 tracked or generated file.
 
-## The SSH keypair
+## SSH lifecycle and local configuration
 
-This package is born conforming to the workspace SSH Keypair Standard
-(`../workspace/standards/ssh-keypair.md`). Read that document before touching
-anything under `green/src/clj/io/github/getcolors/clickstack/ssh.clj` or its
-red/blue counterparts.
+Read `../workspace/standards/ssh-keypair.md` and `ssh-config.md` before edits.
+The library owns key mode, registration preflight, journaled generation,
+fingerprint checks and cleanup. Managed keys live at `~/.ssh/<profile>` and
+are removed only after owned compute resources are destroyed. External provider
+key references require `ssh-private-key-path`; external key material is never
+generated, rotated or deleted. There is no package `ssh-cleanup` step.
 
-The behaviour is ONCE's — `io.github.getcolors.once.ssh` — deliberately reused
-rather than reimplemented, so one standard has one implementation. Absent
-`<provider>-ssh-keys` for the selected provider in desired state means keygen
-mode: the package generates `~/.ssh/<profile>`, declares the account key
-resource (`vultr_ssh_key` or `digitalocean_ssh_key`) named after the profile
-and references it by attribute, runs the provider REST preflight with that
-provider's token before applying, and removes the local key last, only after
-the compute destroy succeeded. Present `<provider>-ssh-keys` means opt-out:
-the package touches no key material and renders the historical shape. Which
-key that is comes from ONCE's `machine-key-keys` table, never a literal, which
-is what lets the build placeholder land on the right key for either provider.
+The package SSH helper only formats identities and deterministic build paths.
+Build/dry-run use `/home/build-placeholder/.ssh/<profile>` and never inspect
+operator key files or `~/.ssh/config`. Application Ansible uses the returned
+login and explicit identity for both managed and external keys.
 
-What this repository adds is the build placeholder. ONCE derives key paths from
-`$HOME` and commits no rendered output; clickstack commits goldens, so `build`
-and `--dry-run` render `/home/build-placeholder/.ssh/<profile>` instead. That
-is why `ssh/rendered-only?` tests `:green/dry-run` as well as the event — a
-dry-run that fell through to the real path would read `~/.ssh`, which the
-standard forbids, and `bb test` covers exactly that.
+The package-owned `ansible-local/main.yml` contains the workspace locked,
+atomic SSH-config updater. Keep its Python implementation identical across
+colors. Runtime alias, address, user and removal mode arrive as Ansible
+extra-vars, never rendered machine addresses. The managed block uses the profile
+alias and includes `IdentityFile`/`IdentitiesOnly` only in managed mode. The
+updater refuses conflicting unmanaged stanzas and leading global options.
+Create updates the block after compute and before DNS/convergence; delete
+removes it before compute destruction. Never replace this with `blockinfile`
+or move key cleanup ahead of resource destruction.
 
-`bb golden` renders four fixtures: one per advertised provider per keypair
-mode, because the standard has two modes — keygen (`test/fixtures/colors.yml`,
-`colors-digitalocean.yml`) and opt-out (`optout.yml`, `optout-digitalocean.yml`)
-— and a change that only holds in one of them, or on one provider, is not
-conforming. The two DigitalOcean fixtures also split the Compute Name
-Standard: the keygen one carries no `digitalocean-name` and proves the profile
-default, the opt-out one sets it to the profile. The Vultr fixtures keep
-`vultr-name` equal to the profile so their goldens stayed byte-identical
-through adoption, apart from the `provider` line in `params`.
+## Build and migration checks
 
-## The `~/.ssh/config` block
+The four shared fixtures exercise managed/external keys on two adapters;
+they are regression examples, not a package provider allowlist. Run native
+Blue/Red/Green tests, Red typecheck, `scripts/parity.sh`, `scripts/golden.sh`
+and `scripts/launcher.sh`. Golden acceptance requires reviewing the generated
+application changes first. `scripts/check-compute-plan.py` checks singleton
+stages, exact backend keys, absence of inline backend secrets and absence of
+the old compute stage. Run the root example build with its workdir directed
+to a temporary directory; it is separate from fixture coverage.
 
-This package is also the reference implementation of the workspace SSH Config
-Standard (`../workspace/standards/ssh-config.md`), which is why the
-`ansible-local` stage exists: one `blockinfile` task giving the operator
-`ssh <profile>` instead of an address, a user and an identity file.
-
-Two rules there are easy to undo by accident.
-
-The play is **this package's own copy**, deliberately not shared with ONCE's,
-which is the opposite choice from `ssh.clj` above. `ssh.clj` acts on
-profile-named files only this deployment uses, so sharing it spreads fixes.
-The local play writes into a file the operator shares with every host they
-reach, so sharing it would let an unrelated upstream change rewrite that file
-at pin-bump time.
-
-Address, user, alias and `block_state` arrive as **Ansible extra-vars, never
-through Selmer**. That is what keeps `build` byte-identical across workstations
-and keeps addresses out of the goldens, and `scripts/golden.sh` fails if a
-dotted quad ever appears under `clickstack-ansible-local`.
-
-Create writes the block after compute and before convergence. Delete removes it
-*before* the destroy, which is the reverse of the keypair: a block that
-outlives its host is stale but harmless, while a key removed early locks you
-out of a machine that still exists.
+After dependency changes, build actual copied standalone payloads with no
+`*_LIB_ROOT` overrides. Local tests alone do not prove their dependency pins.
+Keep unrelated untracked compute-matrix artifacts out of migration commits.
+Do not claim live deployment verification from an offline build.
 
 ## Credentials generated on the server
 
@@ -204,28 +151,22 @@ Never read `.envrc.private`, edit `.colors/`, export `COLORS_PAR_PROFILE`, or
 weaken `compute-prevent-destroy`. Build and dry-run are credential-free and
 must not touch `~/.ssh`.
 
-## Coupling
+## Dependency pins and launchers
 
-The package pins Green and ONCE in `green/deps.edn`, the Red SDK and
-`package-once-red` in `red/package.json`, and the Blue SDK and
-`package-once-blue` in `blue/pyproject.toml`. All three colours pin ONCE at the
-**same rev** — ONCE's own parity is what guarantees its colours agree per
-commit. ONCE supplies the backend provider registry, the registrable-domain
-helper, the whole SSH standard implementation, and the Compute Provider
-Standard's operations (`compute`) — so the ONCE pin can never go below the
-commit that added `compute`, itself above `bc06f2f`, the commit that moved the
-machine keypair into the operator's `~/.ssh`. The ONCE and green pins also
-move together: ONCE `38e3cd6` trusts the SDK's step error alone when it reads
-a state that does not exist yet, so it needs green `3f33f5d`, where the green
-SDK reports a tofu launch failure (a missing stage directory, a missing
-binary) as that step error the way red and blue always did — an older green
-under that ONCE crashes a fresh clone's create instead of reporting its
-credentials. Use `GREEN_LIB_ROOT`, `ONCE_LIB_ROOT`, and
-`CLICKSTACK_LIB_ROOT` for working-tree development (`CLICKSTACK_LIB_ROOT`
-names the repository root for every colour; red also accepts the `red/` dir
-directly). Final launchers use a pushed SHA managed by `bb pin`, which stamps
-all three payloads from their unpinned birth forms; deployment launchers are
-copies, not symlinks.
+Keep colors-compute's revision aligned in all three manifests/locks, the root
+Red manifest, Blue PEP723 payload metadata and `green/tasks/pin.clj`. ONCE is
+still pinned at `38e3cd66674a32fb96605e1b17ae6791086ad5c1` for application DNS
+backend credential mapping and utility helpers; it no longer owns compute or
+machine keys for this package. S3 credentials stay ambient. Preserve the DNS
+R2 credential mapping when changing ONCE helpers.
+
+Use `CLICKSTACK_LIB_ROOT` for repository development. Canonical `bb pin` in
+`green/` stamps the three launchers only after the source commit is pushed.
+Use a clean temporary worktree if unrelated untracked files prevent pinning;
+never fabricate a SHA or include those files merely to satisfy the guard.
+Then test the copied payloads, commit and push the stamps. Deployment
+launchers are copies, not symlinks. Avoid duplicate transitive Git package
+entries in Red's standalone PINS: Bun can fail before package loading.
 
 ## Documentation
 
