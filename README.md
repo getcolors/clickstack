@@ -2,8 +2,7 @@
 
 A tri-colour Package Skill (green, red, blue) that provisions **ClickStack** —
 the ClickHouse observability stack: ClickHouse, MongoDB, the HyperDX
-OpenTelemetry collector, and the HyperDX UI — on one Vultr instance or one
-DigitalOcean droplet, behind Caddy and Cloudflare.
+OpenTelemetry collector, and the HyperDX UI — on one VM through the shared `colors-compute` library, behind Caddy and Cloudflare.
 
 ```sh
 npx skills add getcolors/clickstack
@@ -24,7 +23,7 @@ makes them the safe way to check a `colors.yml` edit.
 
 | Layer | Contents |
 |---|---|
-| Compute | One Vultr instance or one DigitalOcean droplet (`provider-compute`), a provider firewall opening 22/80/443, and — in keygen mode — the account SSH key named after the profile. On DigitalOcean the droplet joins the region's default VPC, discovered at plan time |
+| Compute | One library-owned node with SSH/HTTP ingress, guarded S3/R2 state and managed or explicit external SSH identity. No extra private network is requested by default. |
 | DNS | One proxied Cloudflare `A` record for `clickstack-host` |
 | Server | Docker Compose: ClickHouse, MongoDB, HyperDX collector, HyperDX app, Caddy |
 
@@ -39,9 +38,9 @@ header. Nothing but Caddy publishes a port.
 The deployment owns its machine key, per the workspace
 [SSH Keypair Standard](https://github.com/getcolors/workspace/blob/main/standards/ssh-keypair.md).
 Leave `vultr-ssh-keys` (or `digitalocean-ssh-keys`) out of `colors.yml` and the
-package generates `~/.ssh/<profile>` on the first real `create`, registers it
+library generates `~/.ssh/<profile>` on the first real `create`, registers it
 at the provider under the profile name, and deletes it after a successful
-`delete` — never before. Keygen mode works on both providers.
+`delete` — never before.
 
 Consequences worth knowing before you clone a deployment elsewhere:
 
@@ -53,24 +52,26 @@ Consequences worth knowing before you clone a deployment elsewhere:
 - A provider key named after the profile that this deployment's state does not
   own is an error too. If its fingerprint differs from yours, **do not delete
   it**.
-- Rotation is a rebuild: machine key lists are ForceNew on both providers.
+- A changed machine identity requires a reviewed replacement workflow.
 
-Supplying `<provider>-ssh-keys` opts out entirely; the package then generates,
-validates, and deletes nothing.
+Supplying an external key reference selects external mode. The library never
+generates or deletes that key. Supply `ssh-private-key-path` explicitly for access.
 
-## Two compute providers
+## Shared compute library
 
-`provider-compute` selects `vultr` or `digitalocean`. Each provider is a
-template directory of its own, with its own credential and its own
-provider-scoped keys (`vultr-region`, `vultr-plan`, `vultr-os-id`;
-`digitalocean-region`, `digitalocean-size`, `digitalocean-image`; and
-`<provider>-ssh-sources` / `<provider>-http-sources` on both). Keys of the
-unselected provider are ignored, so one `colors.yml` can carry both.
-`<provider>-name` is optional and defaults to the profile.
+All three packages depend on `colors-compute`. They declare one node and
+application ingress; provider templates, credentials, naming, state and key
+lifecycle stay in the library. New provider support requires a library version
+bump rather than another package template. The selected adapter must support
+the requested security policy and an Ubuntu image suitable for the stack.
 
-Switching providers is a rebuild, never an apply: a profile whose state already
-holds a machine refuses a create or delete under a different `provider-compute`
-until it is set back and deleted.
+`clickstack-ssh-sources` and `clickstack-http-sources` are neutral CIDR options.
+The existing provider-prefixed options remain compatible. The library refuses
+provider changes on an existing deployment and requires remote S3 or R2 state.
+
+The old `<profile>/clickstack-infrastructure.tfstate` is guarded: existing
+installations require an explicit ownership migration or deletion with the
+original package version. Removing state is not a migration.
 
 ## Configuration
 

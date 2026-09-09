@@ -19,9 +19,10 @@
 
 (def blue-unpinned-meta "# dependencies = []\n# ///")
 (defn blue-pinned-meta [sha]
-  (str "# dependencies = [\"package-clickstack-blue\", \"blue\"]\n"
+  (str "# dependencies = [\"package-clickstack-blue\", \"blue\", \"colors-compute-blue\"]\n"
        "#\n"
        "# [tool.uv.sources]\n"
+       "# colors-compute-blue = { git = \"https://github.com/getcolors/colors-compute.git\", rev = \"3451a05e719b0ad6809f3c88b241a8c010b8f58b\", subdirectory = \"blue\" }\n"
        "# package-clickstack-blue = { git = \"https://github.com/getcolors/clickstack.git\", rev = \"" sha "\", subdirectory = \"blue\" }\n"
        "# blue = { git = \"https://github.com/getcolors/blue.git\", rev = \"290f313ead5ca162875c33a049c880da017eae09\" }\n"
        "#\n"

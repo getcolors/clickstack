@@ -3,6 +3,7 @@
 # a literal key id on the instance and no vultr_ssh_key resource.
 profile: clickstack-optout
 workdir: WORKDIR
+ssh-private-key-path: /home/build-placeholder/.ssh/operator-key
 
 provider-compute: vultr
 provider-dns: cloudflare

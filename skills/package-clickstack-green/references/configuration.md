@@ -30,9 +30,9 @@ without it signs session cookies with a value anybody can read.
 |---|---|
 | `profile` | Names the work directory, state keys, cloud resources, and the machine keypair. Never overlay it. |
 | `workdir` | Generated-output root, conventionally `.colors`. |
-| `provider-compute` | `vultr` or `digitalocean`. Selects the compute template and which provider-scoped keys below are read; the other provider's keys are ignored. Switching on a profile that already holds a machine is refused — see below. |
+| `provider-compute` | Adapter selected by the pinned colors-compute library; defaults to `vultr`. |
 | `provider-dns` | Must be `cloudflare`. |
-| `provider-backend` | `local`, `s3`, or `r2`. |
+| `provider-backend` | `s3` or `r2` remote state, with deployment-wide coordination. |
 | `compute-prevent-destroy` | Keep `true`; guards `delete`. |
 | `clickstack-admin-email` | Login identity for the initial HyperDX team, created during convergence. The password is generated on the server. |
 | `clickstack-host` | Public hostname. Its registrable domain must be a Cloudflare zone; the package manages the proxied A record and Caddy obtains TLS. |
@@ -63,9 +63,18 @@ without it signs session cookies with a value anybody can read.
 | `digitalocean-ssh-keys` | **Optional, and meaningful by its absence.** Omit it for keygen mode (below). Supplying an existing account key id or fingerprint opts out. |
 | `digitalocean-ssh-sources` / `digitalocean-http-sources` | CIDR allowlists for the firewall (22 and 80/443). |
 
-The droplet joins the region's default VPC (`default-<region>`), discovered at
-plan time. `digitalocean-vpc-uuid` and `digitalocean-vpc-cidr` are refused:
-this package neither pins nor creates a VPC.
+Single-host deployments request no additional private network by default.
+Explicit network settings are resolved and checked by the library. Provider
+names, credentials, images, sizes and capabilities are library-owned; the
+Vultr and DigitalOcean fields above describe the included fixture examples.
+AWS uses ambient AWS credentials, Azure the ambient Azure CLI session,
+Google Application Default Credentials, and OCI its configured profile.
+Other token adapters use the library's `COLORS_PAR_*` bindings. S3 also uses
+the ambient AWS credential chain.
+
+External key references additionally require `ssh-private-key-path` pointing
+to the operator's existing private key. The library validates access without
+replacing or deleting external key material.
 
 ### The firewall sources
 
@@ -76,22 +85,23 @@ must be a syntactically valid IPv4 or IPv6 CIDR and the SSH list must not be
 empty, both checked before any provider call. An empty HTTP list is allowed
 and means no public HTTP.
 
-### Switching providers
+### State and provider changes
 
-Provider switching is a rebuild, never an apply. Both providers share one
-state key, so a changed `provider-compute` on a profile whose state already
-holds a machine is refused on create *and* delete with
-`state holds a <recorded> machine; set provider-compute back to <recorded> and
-delete first`. A deployment created before this package recorded the provider
-in its compute output is treated as Vultr. The check reads the state with the
-backend credentials alone and runs before the provider credential check, so a
-mistaken edit reports the actionable error rather than a missing token. On a
-real delete an unreadable backend is an error, never an empty state.
+The library owns `<profile>/compute/shared.tfstate`, one node state and the
+remote ownership journal. Every operation checks their identity before
+compute mutation. An unreadable backend is an error, never empty state.
+Changing providers on an existing deployment is refused; restore the original
+provider and complete deletion before creating a replacement.
+
+The old monolithic `<profile>/clickstack-infrastructure.tfstate` is an explicit
+migration boundary. Its presence stops the new lifecycle. Do not delete or
+rename remote state to bypass the guard. Use a reviewed ownership migration,
+or the original package version to destroy the old deployment first.
 
 ## The machine keypair
 
-With `<provider>-ssh-keys` absent the deployment owns its key, per the
-workspace SSH Keypair Standard, on either provider:
+The library owns the managed key lifecycle. With external key options absent the deployment owns its key, per the
+workspace SSH Keypair Standard, through the selected adapter:
 
 - The first real `create` generates `~/.ssh/<profile>` (ed25519, no passphrase,
   comment `<profile> managed by Colors`) and enforces `700` on `~/.ssh` and
@@ -107,8 +117,8 @@ workspace SSH Keypair Standard, on either provider:
 - `build` and `--dry-run` never read or create anything under `~/.ssh`; they
   render a fixed placeholder path so output stays byte-identical everywhere.
 
-There is no rotation verb: machine key lists are ForceNew on both providers,
-so rotation is `delete` then `create`.
+There is no application key-rotation verb. Use a reviewed replacement workflow
+when changing an existing deployment identity.
 
 ## Ports and exposure
 
@@ -171,12 +181,9 @@ sends one OTLP log and waits for the row to appear in `default.otel_logs`.
 
 | Symptom | Cause | Action |
 |---|---|---|
-| `does not hold the machine key` | State exists, `~/.ssh/<profile>` does not — a fresh clone or a new workstation | Copy the keypair from where the deployment was created; a regenerated key cannot reach the existing host |
-| `no compute state is readable` | Key on disk, no state — an interrupted create or an incomplete delete | Verify at the provider that no host survives, then remove `~/.ssh/<profile>`(`.pub`) and retry |
-| `already has an SSH key named …` and it matches yours | A previous delete left the provider key | Verify no host survives, delete that key at the provider, retry |
-| `state holds a … machine; set provider-compute back` | `provider-compute` was changed on a profile with a live machine | Set it back, `delete`, then switch and `create` |
-| `could not read the infrastructure state for the delete cleanup` | The backend is unreadable on a real delete | Fix the backend credentials; a delete never proceeds against an address it cannot read |
-| `compute produced no ip output` | A real create's compute stage applied without an address | Inspect the compute state; the converge refuses the documentation address rather than target it |
-| `already has an SSH key named …` and it does not match | A foreign key shares the name | Do not delete it. Investigate, or change `profile` |
+| Legacy compute state requires migration | The old monolithic state still exists | Complete an explicit ownership migration or delete with the original package version; never erase the state to bypass the guard |
+| Compute lifecycle refused | Remote ownership, state, key or provider identity cannot be established | Inspect the library diagnostic and reconcile the existing deployment before retrying |
+| Compute node unavailable | No owned live node address is available | Restore state access; application cleanup refuses a placeholder target |
+| Managed key unavailable | State exists but this workstation lacks the key | Copy the original keypair deliberately; a newly generated key cannot access the existing host |
 | Acceptance fails on the OTLP endpoint | Caddy or the collector is not up | `docker compose ps`, then the collector logs |
 | Exporters get connection reset on 4317/4318 | No team exists, so the collector received no OpAMP config and bound no receivers | Run `clickstack-setup`, then confirm `/installation` reports `isTeamExisting: true` |

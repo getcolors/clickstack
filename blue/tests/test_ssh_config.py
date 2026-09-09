@@ -169,4 +169,4 @@ def test_delete_removes_the_block_before_the_destroy():
     delete = {"blue/event": "delete"}
     assert workflow.wire_fn("clickstack/dns", delete)[1:] == ("clickstack/ssh-config",)
     assert workflow.wire_fn("clickstack/ssh-config", delete)[1:] == ("clickstack/infrastructure",)
-    assert workflow.wire_fn("clickstack/infrastructure", delete)[1:] == ("clickstack/ssh-cleanup",)
+    assert workflow.wire_fn("clickstack/infrastructure", delete)[1:] == ()

@@ -1,6 +1,6 @@
 ---
 name: package-clickstack-green
-description: Provisions ClickStack — ClickHouse, MongoDB, the HyperDX OpenTelemetry collector and UI — as a single-server observability stack on one Vultr instance or one DigitalOcean droplet.
+description: Provisions ClickStack — ClickHouse, MongoDB, the HyperDX OpenTelemetry collector and UI — as a single-server observability stack on one VM through the shared colors-compute library.
 license: MIT
 ---
 
@@ -16,25 +16,26 @@ HyperDX UI on everything else. Point an OTLP exporter at
 `https://<clickstack-host>` with the server-generated ingestion key as its
 `authorization` header.
 
-## Compute providers
+## Compute ownership
 
-`provider-compute` selects `vultr` or `digitalocean`; each provider has its own
-credential and its own provider-scoped keys, and the keys of the other
-provider are ignored, so one `colors.yml` can carry both.
+The pinned `colors-compute` library owns provider selection, remote S3/R2
+state, deployment coordination, machine keys, network policy and the single
+node. This package supplies singleton topology and SSH/HTTP ingress, then
+uses the returned address, login user and SSH identity for its application
+steps. New provider support belongs in the library; consumers update its pin.
+The application needs a supported Ubuntu image and sufficient memory for
+ClickHouse, MongoDB and HyperDX. Build first to check adapter capabilities.
 
-| Provider | Credential | Keys |
-|---|---|---|
-| `vultr` | `COLORS_PAR_VULTR_API_KEY` | `vultr-region`, `vultr-plan`, `vultr-os-id`, `vultr-ssh-sources`, `vultr-http-sources` |
-| `digitalocean` | `COLORS_PAR_DO_TOKEN` | `digitalocean-region`, `digitalocean-size`, `digitalocean-image`, `digitalocean-ssh-sources`, `digitalocean-http-sources` |
+Use `clickstack-ssh-sources` and `clickstack-http-sources` for neutral CIDR
+allowlists. Existing selected-provider source options remain compatible.
+External account key references require `ssh-private-key-path`; external
+private keys are never generated or removed. The local SSH block writes
+`IdentityFile` only for a managed deployment key.
 
-On DigitalOcean the droplet joins the region's default VPC, discovered at plan
-time; `digitalocean-vpc-uuid` and `digitalocean-vpc-cidr` are refused, because
-this package creates and pins no VPC. `<provider>-name` is optional and
-defaults to the profile. Keygen mode (below) works on both providers.
-
-**Switching providers is a rebuild, never an apply.** A profile whose state
-already holds a machine refuses a create or delete under a different
-`provider-compute` — set it back, `delete`, then switch.
+Existing `<profile>/clickstack-infrastructure.tfstate` is refused before
+compute mutation. Do not remove it to bypass this check: migrate ownership
+explicitly or destroy the old deployment through its original version first.
+Unreadable state and provider mismatches fail closed.
 
 ## Safety
 

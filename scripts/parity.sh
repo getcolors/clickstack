@@ -9,14 +9,8 @@ set -euo pipefail
 # (red/resources and blue's embedded resources are copies of green's tree, not
 # references to it).
 #
-# Four fixtures, one per advertised compute provider per keypair mode: the SSH
-# Keypair Standard has two modes and parity means both keygen and opt-out hold
-# in every colour, and providers are selected by template directory, so the
-# Vultr tree and the DigitalOcean tree must both hold in every colour too.
-#
-# Renders resolve each colour's package from this working tree (the *_LIB_ROOT
-# overrides), while green, once, red, and blue stay on their pins — a change
-# that lands here passes parity before it is pushed or pinned anywhere.
+# Four fixtures cover the two existing deployment examples in managed and
+# external SSH modes. Compute documents come from the pinned shared library.
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT

@@ -149,5 +149,5 @@
          (vec (rest (workflow/wire-fn :clickstack/dns {:green/event :delete})))))
   (is (= [:clickstack/infrastructure]
          (vec (rest (workflow/wire-fn :clickstack/ssh-config {:green/event :delete})))))
-  (is (= [:clickstack/ssh-cleanup]
+  (is (= []
          (vec (rest (workflow/wire-fn :clickstack/infrastructure {:green/event :delete}))))))

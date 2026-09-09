@@ -5,16 +5,8 @@ set -euo pipefail
 # and diff against committed output. scripts/parity.sh is the net across
 # colours.
 #
-# Four fixtures: one per advertised compute provider per keypair mode, because
-# the SSH Keypair Standard has two modes and a package conforms only if both
-# hold on every provider, and because providers are selected by template
-# directory, so a build is the only thing that proves a provider's tree renders
-# at all. `colors.yml` and `colors-digitalocean.yml` are keygen mode (no
-# `<provider>-ssh-keys`): the compute template must declare the profile-named
-# key resource and reference it by attribute. `optout.yml` and
-# `optout-digitalocean.yml` supply an explicit key id and must render the
-# historical shape, byte for byte, creating nothing.
-#
+# Four fixtures cover the two existing deployment examples in managed and
+# external SSH modes. Compute documents come from the pinned shared library.
 # Keygen paths are rendered from a fixed placeholder home on :build, never from
 # $HOME, so these goldens mean the same thing on every workstation.
 #
@@ -36,6 +28,7 @@ for variant in colors optout colors-digitalocean optout-digitalocean; do
   profile=$(sed -n 's/^profile: //p' "$fixture")
   actual="$tmp/work/$profile"
   golden="$root/test/resources/golden/local/$profile"
+  python3 "$root/scripts/check-compute-plan.py" "$actual"
 
   # No rendered artefact may carry a real secret into a committed golden.
   # Checked before --accept copies anything. POSIX grep on purpose: a missing
