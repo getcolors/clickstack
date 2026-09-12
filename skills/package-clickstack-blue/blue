@@ -5,7 +5,7 @@
 #
 # [tool.uv.sources]
 # colors-compute-blue = { git = "https://github.com/getcolors/colors-compute.git", rev = "ae28ea74962bb1897fa6365c143c1d43ac1fe095", subdirectory = "blue" }
-# package-clickstack-blue = { git = "https://github.com/getcolors/clickstack.git", rev = "8b13a8a8364f8e3c501947aa753f7019339af471", subdirectory = "blue" }
+# package-clickstack-blue = { git = "https://github.com/getcolors/clickstack.git", rev = "08596873c5552f1d09fb730ef5fa46dda5950f13", subdirectory = "blue" }
 # blue = { git = "https://github.com/getcolors/blue.git", rev = "290f313ead5ca162875c33a049c880da017eae09" }
 #
 # [tool.uv]
