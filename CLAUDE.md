@@ -16,7 +16,7 @@ and never 4317/4318. The first consumer is `../clickstack-vultr`.
 
 ## Shared compute ownership
 
-All three colors depend on `colors-compute`, currently pinned to `3451a05e719b0ad6809f3c88b241a8c010b8f58b`.
+All three colors depend on `colors-compute`, currently pinned to `ae28ea74962bb1897fa6365c143c1d43ac1fe095`.
 Read `../workspace/standards/compute-provider.md`, `compute-name.md` and
 `compute-cluster.md` before changing this boundary. This package owns only
 application requirements and singleton topology: role null, count 1. Its
